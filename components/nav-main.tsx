@@ -2,9 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import Image from "next/image"
 import { usePathname, useSearchParams } from "next/navigation"
-import { findHero3dIcon } from "@/lib/hero-3d-icons"
 import {
   IconChevronRight,
   IconCirclePlusFilled,
@@ -95,7 +93,6 @@ function SubmenuItem({ item, pathname, searchParamsStr = "" }: { item: NavItem; 
   const hasActiveChild = item.children?.some(child => isMenuItemActive(pathname, child.url, searchParamsStr)) ?? false
   const hasChildren = item.children && item.children.length > 0
   const isActive = isMenuItemActive(pathname, item.url, searchParamsStr)
-  const hero3d = findHero3dIcon({ title: item.title, url: item.url })
 
   if (!hasChildren) {
     return (
@@ -110,18 +107,8 @@ function SubmenuItem({ item, pathname, searchParamsStr = "" }: { item: NavItem; 
               : "text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800"
           )}
         >
-          <Link href={item.url} target={item.openInNewTab ? "_blank" : undefined} className="flex items-center gap-2 min-w-0 flex-1">
-            {hero3d ? (
-              <Image
-                src={hero3d.polosUrl}
-                alt={item.title}
-                width={16}
-                height={16}
-                unoptimized
-                className="size-3.5 shrink-0 object-contain select-none pointer-events-none"
-              />
-            ) : null}
-            <span className="truncate">{item.title}</span>
+          <Link href={item.url} target={item.openInNewTab ? "_blank" : undefined}>
+            <span>{item.title}</span>
           </Link>
         </SidebarMenuSubButton>
       </SidebarMenuSubItem>
@@ -140,19 +127,7 @@ function SubmenuItem({ item, pathname, searchParamsStr = "" }: { item: NavItem; 
                 (isActive || hasActiveChild) && "font-semibold text-blue-700 dark:text-blue-300"
               )}
             >
-              <div className="flex items-center gap-2 min-w-0 flex-1">
-                {hero3d ? (
-                  <Image
-                    src={hero3d.polosUrl}
-                    alt={item.title}
-                    width={16}
-                    height={16}
-                    unoptimized
-                    className="size-3.5 shrink-0 object-contain select-none pointer-events-none"
-                  />
-                ) : null}
-                <span className="truncate">{item.title}</span>
-              </div>
+              <span>{item.title}</span>
               <IconChevronRight
                 className={cn(
                   "ml-auto h-3.5 w-3.5 transition-transform duration-200",
@@ -164,7 +139,6 @@ function SubmenuItem({ item, pathname, searchParamsStr = "" }: { item: NavItem; 
           <CollapsibleContent className="pl-2 border-l border-sidebar-border/60 ml-2 mt-1 flex flex-col gap-1">
             {item.children?.map((child, childIdx) => {
               const isChildActive = isMenuItemActive(pathname, child.url, searchParamsStr)
-              const child3d = findHero3dIcon({ title: child.title, url: child.url })
               return (
                 <SidebarMenuSubItem key={child.id ? `child-${child.id}` : `${child.url}-${child.title}-${childIdx}`}>
                   <SidebarMenuSubButton
@@ -177,18 +151,8 @@ function SubmenuItem({ item, pathname, searchParamsStr = "" }: { item: NavItem; 
                         : "text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800"
                     )}
                   >
-                    <Link href={child.url} target={child.openInNewTab ? "_blank" : undefined} className="flex items-center gap-2 min-w-0 flex-1">
-                      {child3d ? (
-                        <Image
-                          src={child3d.polosUrl}
-                          alt={child.title}
-                          width={14}
-                          height={14}
-                          unoptimized
-                          className="size-3.5 shrink-0 object-contain select-none pointer-events-none"
-                        />
-                      ) : null}
-                      <span className="truncate">{child.title}</span>
+                    <Link href={child.url} target={child.openInNewTab ? "_blank" : undefined}>
+                      <span>{child.title}</span>
                     </Link>
                   </SidebarMenuSubButton>
                 </SidebarMenuSubItem>
@@ -330,22 +294,7 @@ function NavMainInner({
                           hasActiveItem && "bg-blue-50 text-blue-700 font-semibold dark:bg-blue-950/60 dark:text-blue-300"
                         )}
                       >
-                        {(() => {
-                          const group3d = findHero3dIcon({ title: group.title })
-                          if (group3d) {
-                            return (
-                              <Image
-                                src={group3d.polosUrl}
-                                alt={group.title}
-                                width={18}
-                                height={18}
-                                unoptimized
-                                className="size-4 shrink-0 object-contain select-none pointer-events-none"
-                              />
-                            )
-                          }
-                          return group.icon && <group.icon />
-                        })()}
+                        {group.icon && <group.icon />}
                         <span suppressHydrationWarning>{group.title}</span>
                         <IconChevronRight
                           className={cn(

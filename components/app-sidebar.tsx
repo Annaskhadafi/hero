@@ -4,7 +4,6 @@ import * as React from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { resolveUploadUrl } from "@/lib/resolve-upload-url"
-import { findHero3dIcon } from "@/lib/hero-3d-icons"
 import {
   IconBell,
   IconBook,
@@ -626,24 +625,7 @@ export function AppSidebar({
                               className="flex items-center justify-between gap-2 w-full min-w-0"
                             >
                               <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                                {(() => {
-                                  const hero3d = findHero3dIcon({ title, url })
-                                  if (hero3d) {
-                                    return (
-                                      <Image
-                                        src={hero3d.polosUrl}
-                                        alt={title}
-                                        width={18}
-                                        height={18}
-                                        unoptimized
-                                        className="size-4 shrink-0 object-contain select-none pointer-events-none"
-                                      />
-                                    )
-                                  }
-                                  return (
-                                    <IconComponent className={cn("size-4 shrink-0", isSelected ? "text-white" : "text-slate-500 dark:text-slate-400")} />
-                                  )
-                                })()}
+                                <IconComponent className={cn("size-4 shrink-0", isSelected ? "text-white" : "text-slate-500 dark:text-slate-400")} />
                                 <span className="truncate text-[13px]">{title}</span>
                               </div>
                               {isSelected && (
