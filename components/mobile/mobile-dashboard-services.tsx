@@ -995,6 +995,8 @@ export function MobileDashboardServices({
                             alt={service.title}
                             width={48}
                             height={48}
+                            priority={index < 12}
+                            loading={index < 12 ? 'eager' : 'lazy'}
                             unoptimized
                             className="size-12 shrink-0 object-contain drop-shadow-[0_4px_10px_rgba(8,32,51,0.06)] select-none pointer-events-none"
                           />
@@ -1028,6 +1030,8 @@ export function MobileDashboardServices({
                             alt={service.title}
                             width={48}
                             height={48}
+                            priority={index < 12}
+                            loading={index < 12 ? 'eager' : 'lazy'}
                             unoptimized
                             className="size-12 shrink-0 object-contain drop-shadow-[0_4px_10px_rgba(8,32,51,0.06)] select-none pointer-events-none"
                           />

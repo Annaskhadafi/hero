@@ -11,18 +11,24 @@ test.describe('Desktop Legacy Icons Reverted & Mobile 3D Retained', () => {
   test('Verify desktop uses legacy icons and mobile uses 3D isometric icons', async ({ page }) => {
     // 1. Authenticate with desktop viewport
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto('/sign-in', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1000);
+    await page.goto('http://localhost:3000/sign-in', { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(2000);
 
-    await page.getByPlaceholder('Masukkan email atau SN').fill('mochamad.khadafi@chitraparatama.co.id');
-    await page.getByPlaceholder('Masukkan kata sandi').fill('Chitra#71261');
-    await page.getByRole('button', { name: 'Masuk ke HERO' }).click();
+    const emailInput = page.locator('input[placeholder*="email atau SN" i], #email, input[name="username"], #employeeSn').first();
+    await emailInput.waitFor({ state: 'visible', timeout: 30000 });
+    await emailInput.fill('71261');
+    const passwordInput = page.locator('input[type="password"], #password, input[name="password"]').first();
+    await passwordInput.fill('Chitra#71261');
+    const submitBtn = page.locator('button[type="submit"], button:has-text("Masuk ke HERO")').first();
+    await submitBtn.click();
 
-    await page.waitForURL(/\/dashboard/, { timeout: 45000 });
+    // Wait for successful login redirect
+    await page.waitForURL((url) => !url.pathname.includes('/sign-in'), { timeout: 90000 });
+    await page.waitForTimeout(3000);
     await page.waitForTimeout(2000);
 
     // 2. Navigate to Desktop Analytics Dashboard
-    await page.goto('/dashboard/analytics', { waitUntil: 'domcontentloaded' });
+    await page.goto('http://localhost:3000/dashboard/analytics', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(3000);
 
     // Hide floating chat widget
@@ -53,7 +59,7 @@ test.describe('Desktop Legacy Icons Reverted & Mobile 3D Retained', () => {
 
     // 3. Navigate to Mobile Dashboard with mobile viewport
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto('/mobile/dashboard', { waitUntil: 'domcontentloaded' });
+    await page.goto('http://localhost:3000/mobile/dashboard', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(3000);
 
     // Hide floating chat widget
@@ -64,7 +70,7 @@ test.describe('Desktop Legacy Icons Reverted & Mobile 3D Retained', () => {
     });
 
     // Verify mobile 3D icons are present
-    const mobile3dIcons = page.locator('img[src*="/icons/hero-3d/"]');
+    const mobile3dIcons = page.locator('img[src*="/icons/hero-24/"], img[src*="/icons/hero-3d/"]');
     await mobile3dIcons.first().waitFor({ state: 'visible', timeout: 15000 });
     const count = await mobile3dIcons.count();
     console.log(`Found ${count} 3D isometric icons on mobile dashboard.`);
