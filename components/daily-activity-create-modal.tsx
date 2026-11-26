@@ -35,6 +35,7 @@ import { SearchableSelect } from '@/components/ui/searchable-select'
 import {
   createDailyActivitySessionAction,
   checkTeamMembersExistingDailyActivityAction,
+  getDailyActivityApproverCandidatesAction,
 } from '@/app/dashboard/activity-hub/actions'
 import { uploadFile } from '@/app/actions/upload'
 import { compressImageFile } from '@/lib/client-image-compression'
@@ -59,6 +60,7 @@ export type ModalSite = {
   id: number
   name: string
   location?: string | null
+  headEmployeeId?: number | null
 }
 
 export type ModalPreset = {
@@ -79,6 +81,7 @@ interface DailyActivityCreateModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   employees: ModalEmployee[]
+  allEmployees?: ModalEmployee[]
   sites: ModalSite[]
   activityPresets?: ModalPreset[]
   routeFolders?: RouteFolder[]
@@ -92,6 +95,7 @@ export function DailyActivityCreateModal({
   open,
   onOpenChange,
   employees,
+  allEmployees = [],
   sites,
   activityPresets = [],
   routeFolders = [],
@@ -222,18 +226,47 @@ export function DailyActivityCreateModal({
 
   const validItemsRef = useRef<any[]>([])
 
+  // Approver candidates fallback if allEmployees not passed
+  const [candidateEmployees, setCandidateEmployees] = useState<ModalEmployee[]>([])
+
+  useEffect(() => {
+    if (allEmployees && allEmployees.length > 0) return
+    let isMounted = true
+    getDailyActivityApproverCandidatesAction()
+      .then((res) => {
+        if (isMounted && res.success && res.data) {
+          setCandidateEmployees(res.data as any)
+        }
+      })
+      .catch((err) => console.error('Error fetching approver candidates:', err))
+    return () => {
+      isMounted = false
+    }
+  }, [allEmployees])
+
+  const approverPool = useMemo(() => {
+    if (allEmployees && allEmployees.length > 0) return allEmployees
+    if (candidateEmployees.length > 0) return candidateEmployees
+    return employees
+  }, [allEmployees, candidateEmployees, employees])
+
   // Initialize form when opened
   useEffect(() => {
     if (open) {
       const targetEmpId = defaultEmployeeId ? String(defaultEmployeeId) : createForm.employeeId || (employees[0] ? String(employees[0].id) : '')
-      const emp = employees.find((e) => String(e.id) === targetEmpId)
+      const emp = (allEmployees && allEmployees.length > 0 ? allEmployees : employees).find((e) => String(e.id) === targetEmpId) || employees[0]
       if (emp) {
+        const pool = approverPool
         const site = sites.find((s) => s.id === emp.siteId)
-        const defLeader = emp.directManagerId ? employees.find((e) => e.id === emp.directManagerId) : null
-        const defSectionHeadId = emp.sectionId ? sectionHeadMap[String(emp.sectionId)] : null
-        const defSectionHead = defSectionHeadId ? employees.find((e) => e.id === defSectionHeadId) : null
-        const defManagerId = emp.departmentId ? deptHeadMap[String(emp.departmentId)] : null
-        const defManager = defManagerId ? employees.find((e) => e.id === defManagerId) : null
+        const defLeader = emp.directManagerId ? pool.find((e) => e.id === emp.directManagerId) : null
+        const defSectionHeadId = emp.sectionId && sectionHeadMap ? sectionHeadMap[String(emp.sectionId)] : null
+        const defSectionHead = defSectionHeadId ? pool.find((e) => e.id === defSectionHeadId) : null
+        const defSiteHeadId = site?.headEmployeeId || null
+        const defSiteHead = defSiteHeadId && defSiteHeadId !== emp.id ? pool.find((e) => e.id === defSiteHeadId) : null
+        const defManagerId = emp.departmentId && deptHeadMap ? deptHeadMap[String(emp.departmentId)] : null
+        const defManager = defManagerId ? pool.find((e) => e.id === defManagerId) : null
+
+        const resolvedLeader = defLeader || defSiteHead || defSectionHead || defManager
 
         setCreateForm((p) => ({
           ...p,
@@ -245,17 +278,17 @@ export function DailyActivityCreateModal({
           section: emp.section || 'Service Operation MVC',
           siteId: emp.siteId ? String(emp.siteId) : sites[0] ? String(sites[0].id) : '',
           siteName: site?.name || sites[0]?.name || 'Balikpapan',
-          leaderEmployeeId: defLeader ? String(defLeader.id) : '',
-          leaderName: defLeader?.name || '',
-          superiorEmployeeId: defSectionHead ? String(defSectionHead.id) : '',
-          superiorName: defSectionHead?.name || '',
-          managerEmployeeId: defManager ? String(defManager.id) : '',
-          managerName: defManager?.name || '',
+          leaderEmployeeId: resolvedLeader ? String(resolvedLeader.id) : (p.leaderEmployeeId || ''),
+          leaderName: resolvedLeader?.name || p.leaderName || '',
+          superiorEmployeeId: defSectionHead ? String(defSectionHead.id) : (p.superiorEmployeeId || ''),
+          superiorName: defSectionHead?.name || p.superiorName || '',
+          managerEmployeeId: defManager ? String(defManager.id) : (p.managerEmployeeId || ''),
+          managerName: defManager?.name || p.managerName || '',
         }))
         setSelectedTeamMemberIds([])
       }
     }
-  }, [open, defaultEmployeeId, employees, sites, sectionHeadMap, deptHeadMap])
+  }, [open, defaultEmployeeId, employees, allEmployees, candidateEmployees, sites, sectionHeadMap, deptHeadMap, approverPool])
 
   const employeeOptions = useMemo(() => {
     return employees.map((e) => ({
@@ -264,8 +297,83 @@ export function DailyActivityCreateModal({
     }))
   }, [employees])
 
+  const approverOptions = useMemo(() => {
+    const list = approverPool
+    const map = new Map<string, { value: string; label: string }>()
+
+    const curEmpId = createForm.employeeId || defaultEmployeeId
+    const curEmp = list.find((e) => String(e.id) === String(curEmpId)) || employees.find((e) => String(e.id) === String(curEmpId))
+
+    // 1. Atasan Langsung (Direct Manager)
+    if (curEmp?.directManagerId) {
+      const mgr = list.find((e) => e.id === curEmp.directManagerId)
+      if (mgr) {
+        map.set(String(mgr.id), {
+          value: String(mgr.id),
+          label: `${(mgr.name || '').toUpperCase()} — (ATASAN LANGSUNG)`,
+        })
+      }
+    }
+
+    // 2. PJO / Head Location
+    if (curEmp?.siteId) {
+      const curSite = (sites || []).find((s) => s.id === curEmp.siteId)
+      if (curSite?.headEmployeeId && curSite.headEmployeeId !== curEmp.id) {
+        const siteHead = list.find((e) => e.id === curSite.headEmployeeId)
+        if (siteHead && !map.has(String(siteHead.id))) {
+          map.set(String(siteHead.id), {
+            value: String(siteHead.id),
+            label: `${(siteHead.name || '').toUpperCase()} — PJO / HEAD LOCATION [${(curSite.name || 'SITE').toUpperCase()}]`,
+          })
+        }
+      }
+    }
+
+    // 3. Section Head
+    if (curEmp?.sectionId && sectionHeadMap && sectionHeadMap[String(curEmp.sectionId)]) {
+      const secHeadId = sectionHeadMap[String(curEmp.sectionId)]
+      if (secHeadId && secHeadId !== curEmp.id) {
+        const secHead = list.find((e) => e.id === secHeadId)
+        if (secHead && !map.has(String(secHead.id))) {
+          map.set(String(secHead.id), {
+            value: String(secHead.id),
+            label: `${(secHead.name || '').toUpperCase()} — (SECTION HEAD)`,
+          })
+        }
+      }
+    }
+
+    // 4. Dept Head
+    if (curEmp?.departmentId && deptHeadMap && deptHeadMap[String(curEmp.departmentId)]) {
+      const deptHeadId = deptHeadMap[String(curEmp.departmentId)]
+      if (deptHeadId && deptHeadId !== curEmp.id) {
+        const deptHead = list.find((e) => e.id === deptHeadId)
+        if (deptHead && !map.has(String(deptHead.id))) {
+          map.set(String(deptHead.id), {
+            value: String(deptHead.id),
+            label: `${(deptHead.name || '').toUpperCase()} — (DEPT HEAD)`,
+          })
+        }
+      }
+    }
+
+    // 5. All other active employees
+    list.forEach((e) => {
+      const idStr = String(e.id)
+      if (!map.has(idStr)) {
+        const siteName = e.siteId ? sites.find((s) => s.id === e.siteId)?.name : null
+        map.set(idStr, {
+          value: idStr,
+          label: `${e.name} ${e.employeeId ? `(${e.employeeId})` : ''} - ${e.jobTitle || e.department || 'Staff'}${siteName ? ` [${siteName}]` : ''}`,
+        })
+      }
+    })
+
+    return Array.from(map.values())
+  }, [approverPool, createForm.employeeId, defaultEmployeeId, employees, sites, sectionHeadMap, deptHeadMap])
+
   const filteredModalEmployees = useMemo(() => {
-    let list = employees.filter((e) => String(e.id) !== createForm.employeeId)
+    let list = approverPool.filter((e) => String(e.id) !== createForm.employeeId)
     if (createForm.siteId) {
       list = list.filter((e) => !e.siteId || String(e.siteId) === createForm.siteId)
     }
@@ -277,7 +385,7 @@ export function DailyActivityCreateModal({
         (e.employeeId && e.employeeId.toLowerCase().includes(q)) ||
         (e.jobTitle && e.jobTitle.toLowerCase().includes(q))
     )
-  }, [employees, createForm.employeeId, createForm.siteId, teamMemberSearchQuery])
+  }, [approverPool, createForm.employeeId, createForm.siteId, teamMemberSearchQuery])
 
   const normalizedPickerSearch = useMemo(() => {
     return (pickerSearch || '').toLowerCase().replace(/[^a-z0-9]/g, '')
@@ -747,7 +855,7 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
           customerName: createForm.customerName?.trim() || undefined,
           items: validItems.map((it: any) => {
             const itemTeamMemberIds = it.itemTeamMemberIds || (isTeamLog ? finalTeamIds : [])
-            const itemTeamMembers = it.itemTeamMembers || employees
+            const itemTeamMembers = it.itemTeamMembers || approverPool
               .filter((e) => itemTeamMemberIds.includes(e.id))
               .map((e) => ({ id: e.id, name: e.name, employeeSn: e.employeeId || undefined }))
             return {
@@ -867,14 +975,19 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
                     placeholder="PILIH KARYAWAN..."
                     value={createForm.employeeId}
                     onValueChange={(val) => {
-                      const emp = employees.find((e) => String(e.id) === val)
+                      const pool = approverPool
+                      const emp = pool.find((e) => String(e.id) === val) || employees.find((e) => String(e.id) === val)
                       if (emp) {
                         const site = sites.find((s) => s.id === emp.siteId)
-                        const defLeader = emp.directManagerId ? employees.find((e) => e.id === emp.directManagerId) : null
+                        const defLeader = emp.directManagerId ? pool.find((e) => e.id === emp.directManagerId) : null
                         const defSectionHeadId = emp.sectionId ? sectionHeadMap[String(emp.sectionId)] : null
-                        const defSectionHead = defSectionHeadId ? employees.find((e) => e.id === defSectionHeadId) : null
+                        const defSectionHead = defSectionHeadId ? pool.find((e) => e.id === defSectionHeadId) : null
+                        const defSiteHeadId = site?.headEmployeeId || null
+                        const defSiteHead = defSiteHeadId && defSiteHeadId !== emp.id ? pool.find((e) => e.id === defSiteHeadId) : null
                         const defManagerId = emp.departmentId ? deptHeadMap[String(emp.departmentId)] : null
-                        const defManager = defManagerId ? employees.find((e) => e.id === defManagerId) : null
+                        const defManager = defManagerId ? pool.find((e) => e.id === defManagerId) : null
+
+                        const resolvedLeader = defLeader || defSiteHead || defSectionHead || defManager
 
                         setCreateForm((p) => ({
                           ...p,
@@ -886,8 +999,8 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
                           section: emp.section || '',
                           siteId: emp.siteId ? String(emp.siteId) : p.siteId,
                           siteName: site?.name || p.siteName,
-                          leaderEmployeeId: defLeader ? String(defLeader.id) : p.leaderEmployeeId,
-                          leaderName: defLeader?.name || p.leaderName,
+                          leaderEmployeeId: resolvedLeader ? String(resolvedLeader.id) : p.leaderEmployeeId,
+                          leaderName: resolvedLeader?.name || p.leaderName,
                           superiorEmployeeId: defSectionHead ? String(defSectionHead.id) : p.superiorEmployeeId,
                           superiorName: defSectionHead?.name || p.superiorName,
                           managerEmployeeId: defManager ? String(defManager.id) : p.managerEmployeeId,
@@ -1068,7 +1181,7 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
 
                   {selectedTeamMemberIds.length > 0 ? (
                     <div className="flex flex-wrap gap-1.5 pt-1">
-                      {employees
+                      {approverPool
                         .filter((e) => selectedTeamMemberIds.includes(e.id))
                         .map((e) => (
                           <Badge
@@ -1666,14 +1779,14 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
                   placeholder="PILIH LEADER / PJO..."
                   value={createForm.leaderEmployeeId}
                   onValueChange={(val) => {
-                    const emp = employees.find((e) => String(e.id) === val)
+                    const emp = approverPool.find((e) => String(e.id) === val)
                     setCreateForm((p) => ({
                       ...p,
                       leaderEmployeeId: val,
                       leaderName: emp?.name || '',
                     }))
                   }}
-                  options={employeeOptions}
+                  options={approverOptions}
                   widthClassName="w-full"
                 />
               </div>

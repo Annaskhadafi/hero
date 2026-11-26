@@ -179,6 +179,7 @@ export default async function MyDayPage({
         id: sites.id,
         name: sites.name,
         location: sites.location,
+        headEmployeeId: sites.headEmployeeId,
       })
       .from(sites)
       .where(eq(sites.isActive, true)),
@@ -306,6 +307,7 @@ export default async function MyDayPage({
     id: Number(s.id),
     name: s.name || "",
     location: s.location || "",
+    headEmployeeId: s.headEmployeeId ? Number(s.headEmployeeId) : null,
   }));
 
   const permittedSectionIds = new Set(
@@ -396,6 +398,7 @@ export default async function MyDayPage({
 
         <MyDayActivityCreateTrigger
           employees={accessibleModalEmployees}
+          allEmployees={modalEmployees}
           sites={modalSites}
           activityPresets={modalPresets}
           routeFolders={availableRouteFolders}
@@ -558,6 +561,7 @@ export default async function MyDayPage({
                   emptyAction={
                     <MyDayActivityCreateTrigger
                       employees={accessibleModalEmployees}
+                      allEmployees={modalEmployees}
                       sites={modalSites}
                       activityPresets={modalPresets}
                       routeFolders={availableRouteFolders}

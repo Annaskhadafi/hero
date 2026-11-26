@@ -14,6 +14,7 @@ import type { RouteFolder } from '@/lib/daily-activity'
 
 interface MyDayActivityCreateTriggerProps {
   employees: ModalEmployee[]
+  allEmployees?: ModalEmployee[]
   sites: ModalSite[]
   activityPresets?: ModalPreset[]
   routeFolders?: RouteFolder[]
@@ -29,6 +30,7 @@ interface MyDayActivityCreateTriggerProps {
 
 export function MyDayActivityCreateTrigger({
   employees,
+  allEmployees,
   sites,
   activityPresets,
   routeFolders,
@@ -66,6 +68,7 @@ export function MyDayActivityCreateTrigger({
         open={open}
         onOpenChange={setOpen}
         employees={employees}
+        allEmployees={allEmployees}
         sites={sites}
         activityPresets={activityPresets}
         routeFolders={routeFolders}

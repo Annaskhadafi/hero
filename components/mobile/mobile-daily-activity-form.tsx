@@ -1256,11 +1256,15 @@ export function MobileDailyActivityForm({
   const [leaderEmployeeId, setLeaderEmployeeId] = useState<string>(() => {
     if (initialDraft?.leaderEmployeeId) return String(initialDraft.leaderEmployeeId)
     if (existingLeaderApproval?.approverEmployeeId) return String(existingLeaderApproval.approverEmployeeId)
+    // Prioritaskan Atasan Langsung (Direct Manager) jika ada
+    if (hierarchy?.leader?.id && hierarchy.leader.id !== employeeId) {
+      return String(hierarchy.leader.id)
+    }
     // Sesuai Master Data Location: PJO Activities disesuaikan dengan Head Location di Master Data Location
     if (siteHeadEmployeeId && siteHeadEmployeeId !== employeeId) {
       return String(siteHeadEmployeeId)
     }
-    return hierarchy?.leader?.id ? String(hierarchy.leader.id) : ''
+    return ''
   })
   const [superiorEmployeeId, setSuperiorEmployeeId] = useState<string>(() => {
     if (initialDraft?.superiorEmployeeId) return String(initialDraft.superiorEmployeeId)
@@ -2306,9 +2310,16 @@ export function MobileDailyActivityForm({
 
     const map = new Map<string, { value: string; label: string }>()
 
+    if (hierarchy?.leader && !map.has(String(hierarchy.leader.id))) {
+      map.set(String(hierarchy.leader.id), {
+        value: String(hierarchy.leader.id),
+        label: `${hierarchy.leader.name.toUpperCase()} — (ATASAN LANGSUNG)`,
+      })
+    }
+
     // PJO / Head Location dari Master Data Location (sites.headEmployeeId)
     const pjoId = site?.headEmployeeId || hierarchy?.superior?.id
-    if (pjoId) {
+    if (pjoId && pjoId !== hierarchy?.leader?.id) {
       const pjoEmp = list.find((m: any) => m.id === pjoId) || hierarchy?.superior
       if (pjoEmp) {
         map.set(String(pjoEmp.id), {
@@ -2316,13 +2327,6 @@ export function MobileDailyActivityForm({
           label: `${pjoEmp.name.toUpperCase()} — PJO / HEAD LOCATION [${(site?.name || 'SITE').toUpperCase()}]`,
         })
       }
-    }
-
-    if (hierarchy?.leader && !map.has(String(hierarchy.leader.id))) {
-      map.set(String(hierarchy.leader.id), {
-        value: String(hierarchy.leader.id),
-        label: `${hierarchy.leader.name.toUpperCase()} — (ATASAN LANGSUNG)`,
-      })
     }
 
     if (hierarchy?.superior && !map.has(String(hierarchy.superior.id))) {
