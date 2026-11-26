@@ -45,6 +45,7 @@ import {
   Eye,
   EyeOff,
 } from "lucide-react"
+import { Hero3dIcon } from "@/components/ui/hero-3d-icon"
 import type { IndividualDashboardData } from "@/lib/analytics-dashboard-data"
 import { cn } from "@/lib/utils"
 import { AdminPageShell } from "@/components/admin-page-shell"
@@ -861,7 +862,7 @@ export function AnalyticsRedesignClient({ data }: { data: IndividualDashboardDat
                     title="Buka Popup Check In Desktop"
                   >
                     <div className={quickActionIconClassName}>
-                      <LogIn className="h-4 w-4" />
+                      <Hero3dIcon iconKey="cabang-terdekat" variant="polos" width={22} height={22} className="size-5.5" fallback={<LogIn className="h-4 w-4" />} />
                     </div>
                     <span className="text-[11px] font-extrabold">Check In</span>
                   </Button>
@@ -872,7 +873,7 @@ export function AnalyticsRedesignClient({ data }: { data: IndividualDashboardDat
                     title="Buka Popup Check Out Desktop"
                   >
                     <div className={quickActionIconClassName}>
-                      <LogOut className="h-4 w-4" />
+                      <Hero3dIcon iconKey="cabang-terdekat" variant="polos" width={22} height={22} className="size-5.5" fallback={<LogOut className="h-4 w-4" />} />
                     </div>
                     <span className="text-[11px] font-extrabold">Check Out</span>
                   </Button>
@@ -883,7 +884,7 @@ export function AnalyticsRedesignClient({ data }: { data: IndividualDashboardDat
                     title="Buka Registrasi Wajah Biometrik V2 Popup"
                   >
                     <div className={quickActionIconClassName}>
-                      <UserCheck className="h-4 w-4" />
+                      <Hero3dIcon iconKey="team-directory" variant="polos" width={22} height={22} className="size-5.5" fallback={<UserCheck className="h-4 w-4" />} />
                     </div>
                     <span className="text-[10px] font-extrabold text-center leading-none">Registrasi Wajah</span>
                   </Button>
@@ -897,7 +898,7 @@ export function AnalyticsRedesignClient({ data }: { data: IndividualDashboardDat
                     title="Buka Popup Pengajuan Izin / Sakit"
                   >
                     <div className={quickActionIconClassName}>
-                      <FileText className="h-4 w-4" />
+                      <Hero3dIcon iconKey="permohonan-cuti" variant="polos" width={22} height={22} className="size-5.5" fallback={<FileText className="h-4 w-4" />} />
                     </div>
                     <span className="text-[10px] font-extrabold text-center leading-none">Izin Sakit</span>
                   </Button>
@@ -908,7 +909,7 @@ export function AnalyticsRedesignClient({ data }: { data: IndividualDashboardDat
                     title="Buka Popup Form Pengajuan Lembur SPL Mobile"
                   >
                     <div className={quickActionIconClassName}>
-                      <Clock3 className="h-4 w-4" />
+                      <Hero3dIcon iconKey="iroster" variant="polos" width={22} height={22} className="size-5.5" fallback={<Clock3 className="h-4 w-4" />} />
                     </div>
                     <span className="text-[10px] font-extrabold text-center leading-none">Pengajuan Lembur</span>
                   </Button>
@@ -919,7 +920,7 @@ export function AnalyticsRedesignClient({ data }: { data: IndividualDashboardDat
                       title="Buka Platform Learning Management System Chitra LMS"
                     >
                       <div className={quickActionIconClassName}>
-                        <GraduationCap className="h-4 w-4" />
+                        <Hero3dIcon iconKey="training-enhancement" variant="polos" width={22} height={22} className="size-5.5" fallback={<GraduationCap className="h-4 w-4" />} />
                       </div>
                       <span className="text-[10px] font-extrabold text-center leading-none">Chitra LMS</span>
                     </Link>
@@ -934,7 +935,7 @@ export function AnalyticsRedesignClient({ data }: { data: IndividualDashboardDat
                     title="Buka Popup Form Input Progress Harian"
                   >
                     <div className={quickActionIconClassName}>
-                      <Activity className="h-4 w-4" />
+                      <Hero3dIcon iconKey="document-management" variant="polos" width={22} height={22} className="size-5.5" fallback={<Activity className="h-4 w-4" />} />
                     </div>
                     <span className="text-[10px] font-extrabold text-center leading-none">Input Progress</span>
                   </Button>
@@ -945,7 +946,7 @@ export function AnalyticsRedesignClient({ data }: { data: IndividualDashboardDat
                     title="Buka Popup Informasi Head Office (HO)"
                   >
                     <div className={quickActionIconClassName}>
-                      <Building2 className="h-4 w-4" />
+                      <Hero3dIcon iconKey="premises" variant="polos" width={22} height={22} className="size-5.5" fallback={<Building2 className="h-4 w-4" />} />
                     </div>
                     <span className="text-[10px] font-extrabold text-center leading-none">Informasi HO</span>
                   </Button>
@@ -956,7 +957,7 @@ export function AnalyticsRedesignClient({ data }: { data: IndividualDashboardDat
                     title="Buka Popup Form Pengaduan HR (Curhat HR)"
                   >
                     <div className={quickActionIconClassName}>
-                      <MessageSquareHeart className="h-4 w-4" />
+                      <Hero3dIcon iconKey="status-pernikahan" variant="polos" width={22} height={22} className="size-5.5" fallback={<MessageSquareHeart className="h-4 w-4" />} />
                     </div>
                     <span className="text-[10px] font-extrabold text-center leading-none">Pengaduan HR</span>
                   </Button>
@@ -970,7 +971,7 @@ export function AnalyticsRedesignClient({ data }: { data: IndividualDashboardDat
                     title="Buka Popup Form Pengajuan APD Mobile"
                   >
                     <div className={quickActionIconClassName}>
-                      <ShieldCheck className="h-4 w-4" />
+                      <Hero3dIcon iconKey="summary-apd" variant="polos" width={22} height={22} className="size-5.5" fallback={<ShieldCheck className="h-4 w-4" />} />
                     </div>
                     <span className="text-[10px] font-extrabold text-center leading-none">Pengajuan APD</span>
                   </Button>
@@ -992,7 +993,7 @@ export function AnalyticsRedesignClient({ data }: { data: IndividualDashboardDat
                     title="Buka Popup Program Wellness Karyawan Mobile"
                   >
                     <div className={quickActionIconClassName}>
-                      <HeartPulse className="h-4 w-4" />
+                      <Hero3dIcon iconKey="wellness" variant="polos" width={22} height={22} className="size-5.5" fallback={<HeartPulse className="h-4 w-4" />} />
                     </div>
                     <span className="text-[10px] font-extrabold text-center leading-none">Wellness</span>
                   </Button>

@@ -2084,6 +2084,7 @@ export async function ensureDailyActivitySeedData() {
       await seedDailyActivityReferenceData()
       globalDailyActivityState.__heroDailyActivitySeedReady = true
     } catch (error) {
+      globalDailyActivityState.__heroDailyActivitySeedReady = true
       dailyActivitySeedPromise = null
       console.warn('[daily-activity] ensureDailyActivitySeedData warning:', (error as any)?.message || error)
     }

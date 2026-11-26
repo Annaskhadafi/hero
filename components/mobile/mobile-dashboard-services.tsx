@@ -2,6 +2,8 @@
 
 import { useState, useMemo, useEffect, useTransition } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
+import { findHero3dIcon } from '@/lib/hero-3d-icons'
 import {
   MapPin,
   ShieldCheck,
@@ -200,17 +202,29 @@ function ServiceCatalogCard({
 }) {
   const Icon = item.icon || Folder
   const categoryName = resolveServiceCategory(item)
+  const hero3d = findHero3dIcon({ title: item.title, url: item.url })
 
   const cardContent = (
     <>
       <div className="flex items-start justify-between gap-1.5">
         <div
           className={cn(
-            'flex size-10 shrink-0 items-center justify-center rounded-xl shadow-2xs',
-            item.bg || 'bg-sky-500/10 text-sky-600'
+            'flex size-10 shrink-0 items-center justify-center rounded-xl shadow-2xs overflow-hidden',
+            hero3d ? 'bg-slate-50 border border-slate-100/80' : (item.bg || 'bg-sky-500/10 text-sky-600')
           )}
         >
-          <Icon className="size-4.5" />
+          {hero3d ? (
+            <Image
+              src={hero3d.polosUrl}
+              alt={item.title}
+              width={32}
+              height={32}
+              unoptimized
+              className="size-7.5 object-contain select-none pointer-events-none drop-shadow-xs"
+            />
+          ) : (
+            <Icon className="size-4.5" />
+          )}
         </div>
         <div className="flex items-center gap-1">
           <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[8.5px] font-black tracking-wider text-slate-500 uppercase">
@@ -945,6 +959,7 @@ export function MobileDashboardServices({
           <div className="grid grid-cols-4 gap-x-2 gap-y-4">
             {homepageShortcuts.map((service, index) => {
               const Icon = service.icon || Folder
+              const hero3d = findHero3dIcon({ title: service.title, url: service.url })
               return (
                 <div key={`home-service-${index}`} className="relative group">
                   {/* Unpin button in Edit Mode */}
@@ -973,14 +988,27 @@ export function MobileDashboardServices({
                         isEditMode && 'animate-pulse'
                       )}
                     >
-                      <div
-                        className={cn(
-                          'flex size-12 shrink-0 items-center justify-center rounded-2xl shadow-xs transition-transform duration-200 group-hover:scale-105',
-                          service.bg || 'bg-blue-500/10 text-blue-600'
-                        )}
-                      >
-                        <Icon className="size-5" />
-                      </div>
+                      {hero3d ? (
+                        <div className="flex size-12 shrink-0 items-center justify-center transition-transform duration-200 group-hover:scale-105">
+                          <Image
+                            src={hero3d.tileUrl}
+                            alt={service.title}
+                            width={48}
+                            height={48}
+                            unoptimized
+                            className="size-12 shrink-0 object-contain drop-shadow-[0_4px_10px_rgba(8,32,51,0.06)] select-none pointer-events-none"
+                          />
+                        </div>
+                      ) : (
+                        <div
+                          className={cn(
+                            'flex size-12 shrink-0 items-center justify-center rounded-2xl shadow-xs transition-transform duration-200 group-hover:scale-105',
+                            service.bg || 'bg-blue-500/10 text-blue-600'
+                          )}
+                        >
+                          <Icon className="size-5" />
+                        </div>
+                      )}
                       <span className="mt-1.5 flex h-[28px] items-center justify-center px-0.5 text-center text-[11px] font-bold leading-tight text-slate-700 transition-colors group-hover:text-[#003f78]">
                         {service.title}
                       </span>
@@ -993,14 +1021,27 @@ export function MobileDashboardServices({
                         isEditMode && 'animate-pulse'
                       )}
                     >
-                      <div
-                        className={cn(
-                          'flex size-12 shrink-0 items-center justify-center rounded-2xl shadow-xs transition-transform duration-200 group-hover:scale-105',
-                          service.bg || 'bg-sky-500/10 text-sky-600'
-                        )}
-                      >
-                        <Icon className="size-5" />
-                      </div>
+                      {hero3d ? (
+                        <div className="flex size-12 shrink-0 items-center justify-center transition-transform duration-200 group-hover:scale-105">
+                          <Image
+                            src={hero3d.tileUrl}
+                            alt={service.title}
+                            width={48}
+                            height={48}
+                            unoptimized
+                            className="size-12 shrink-0 object-contain drop-shadow-[0_4px_10px_rgba(8,32,51,0.06)] select-none pointer-events-none"
+                          />
+                        </div>
+                      ) : (
+                        <div
+                          className={cn(
+                            'flex size-12 shrink-0 items-center justify-center rounded-2xl shadow-xs transition-transform duration-200 group-hover:scale-105',
+                            service.bg || 'bg-sky-500/10 text-sky-600'
+                          )}
+                        >
+                          <Icon className="size-5" />
+                        </div>
+                      )}
                       <span className="mt-1.5 flex h-[28px] items-center justify-center px-0.5 text-center text-[11px] font-bold leading-tight text-slate-700 transition-colors group-hover:text-[#003f78]">
                         {service.title}
                       </span>
@@ -1348,29 +1389,43 @@ export function MobileDashboardServices({
                 bg: 'bg-indigo-500/10 text-indigo-600',
                 desc: 'Form cetak, buku log, spidol ban, perlengkapan admin',
               },
-            ].map((request) => (
-              <Link
-                key={request.href}
-                href={request.href}
-                onClick={() => setRequestOpen(false)}
-                className="group flex min-h-16 items-center justify-between rounded-2xl border border-slate-100 bg-white p-3.5 shadow-[0_4px_14px_rgba(8,32,51,0.03)] transition-all hover:border-[#003f78]/30 hover:bg-slate-50 active:scale-[0.98]"
-              >
-                <div className="flex items-center gap-3.5">
-                  <span className={`flex size-11 items-center justify-center rounded-xl ${request.bg}`}>
-                    <request.icon className="size-5" />
-                  </span>
-                  <div>
-                    <p className="text-sm font-bold text-[#082033] group-hover:text-[#003f78] transition-colors">
-                      {request.title}
-                    </p>
-                    <p className="text-[11px] font-medium text-slate-400 mt-0.5">
-                      {request.desc}
-                    </p>
+            ].map((request) => {
+              const req3d = findHero3dIcon({ title: request.title, url: request.href })
+              return (
+                <Link
+                  key={request.href}
+                  href={request.href}
+                  onClick={() => setRequestOpen(false)}
+                  className="group flex min-h-16 items-center justify-between rounded-2xl border border-slate-100 bg-white p-3.5 shadow-[0_4px_14px_rgba(8,32,51,0.03)] transition-all hover:border-[#003f78]/30 hover:bg-slate-50 active:scale-[0.98]"
+                >
+                  <div className="flex items-center gap-3.5">
+                    <span className={cn('flex size-11 items-center justify-center rounded-xl overflow-hidden', req3d ? 'bg-slate-50 border border-slate-100' : request.bg)}>
+                      {req3d ? (
+                        <Image
+                          src={req3d.polosUrl}
+                          alt={request.title}
+                          width={32}
+                          height={32}
+                          unoptimized
+                          className="size-7.5 object-contain select-none pointer-events-none drop-shadow-xs"
+                        />
+                      ) : (
+                        <request.icon className="size-5" />
+                      )}
+                    </span>
+                    <div>
+                      <p className="text-sm font-bold text-[#082033] group-hover:text-[#003f78] transition-colors">
+                        {request.title}
+                      </p>
+                      <p className="text-[11px] font-medium text-slate-400 mt-0.5">
+                        {request.desc}
+                      </p>
+                    </div>
                   </div>
-                </div>
-                <ChevronRight className="size-4 text-slate-300 group-hover:text-[#003f78] transition-colors" />
-              </Link>
-            ))}
+                  <ChevronRight className="size-4 text-slate-300 group-hover:text-[#003f78] transition-colors" />
+                </Link>
+              )
+            })}
           </div>
         </SheetContent>
       </Sheet>

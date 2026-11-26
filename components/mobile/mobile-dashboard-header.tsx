@@ -72,7 +72,7 @@ export function MobileDashboardHeader({
               <div className="inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/10 px-3 py-1 backdrop-blur-md shadow-xs">
                 <Trophy className="size-3 text-[#f4b183]" />
                 <span className="text-[9.5px] font-black uppercase tracking-[0.16em] text-white">
-                  {currentLevel.toUpperCase()} RANK
+                  {String(currentLevel || "BRONZE").toUpperCase()} RANK
                 </span>
               </div>
               <div className="mt-3 flex items-baseline gap-1.5">

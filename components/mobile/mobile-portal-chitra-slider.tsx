@@ -1,10 +1,13 @@
 "use client";
 
 import { ArrowUpRight } from "lucide-react";
+import Image from "next/image";
 
 import { PortalChitraIcon } from "@/components/portal-chitra-icon";
+import { findHero3dIcon } from "@/lib/hero-3d-icons";
 import { Badge } from "@/components/ui/badge";
 import { Carousel, CarouselContent, CarouselItem } from "@/components/ui/carousel";
+import { cn } from "@/lib/utils";
 import type { PortalChitraAppRecord } from "@/lib/portal-chitra";
 
 export function MobilePortalChitraSlider({
@@ -32,23 +35,39 @@ export function MobilePortalChitraSlider({
 
       <Carousel opts={{ align: "start" }} className="w-full">
         <CarouselContent className="-ml-3">
-          {apps.map((app) => (
-            <CarouselItem key={app.id} className="basis-[88%] pl-3 sm:basis-[72%]">
-              <a
-                href={app.url}
-                target="_blank"
-                rel="noreferrer"
-                className="block rounded-[1.35rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)] ring-1 ring-[#dbe8f1]"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <span
-                    className="flex size-12 items-center justify-center rounded-[1rem] text-white shadow-[0_14px_24px_rgba(8,32,51,0.16)]"
-                    style={{ backgroundColor: app.color }}
-                  >
-                    <PortalChitraIcon name={app.iconName} className="size-5" />
-                  </span>
-                  <ArrowUpRight className="size-4 text-[#486275]" />
-                </div>
+          {apps.map((app) => {
+            const hero3d = findHero3dIcon({ title: app.name, url: app.url });
+            return (
+              <CarouselItem key={app.id} className="basis-[88%] pl-3 sm:basis-[72%]">
+                <a
+                  href={app.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="block rounded-[1.35rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)] ring-1 ring-[#dbe8f1]"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <span
+                      className={cn(
+                        "flex size-12 items-center justify-center rounded-[1rem] shadow-[0_14px_24px_rgba(8,32,51,0.16)]",
+                        hero3d ? "bg-slate-50 border border-slate-100 p-1.5" : "text-white"
+                      )}
+                      style={hero3d ? undefined : { backgroundColor: app.color }}
+                    >
+                      {hero3d ? (
+                        <Image
+                          src={hero3d.polosUrl}
+                          alt={app.name}
+                          width={36}
+                          height={36}
+                          unoptimized
+                          className="size-8 object-contain select-none pointer-events-none drop-shadow-xs"
+                        />
+                      ) : (
+                        <PortalChitraIcon name={app.iconName} className="size-5" />
+                      )}
+                    </span>
+                    <ArrowUpRight className="size-4 text-[#486275]" />
+                  </div>
 
                 <div className="mt-4">
                   <Badge className="rounded-full border-0 bg-[#f3faff] px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#486275]">
@@ -61,7 +80,8 @@ export function MobilePortalChitraSlider({
                 </div>
               </a>
             </CarouselItem>
-          ))}
+          );
+        })}
         </CarouselContent>
       </Carousel>
     </section>

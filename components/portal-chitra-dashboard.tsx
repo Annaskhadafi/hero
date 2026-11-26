@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { ArrowUpRight, Search } from "lucide-react";
 
 import { PortalChitraIcon } from "@/components/portal-chitra-icon";
+import { findHero3dIcon } from "@/lib/hero-3d-icons";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -152,23 +154,39 @@ export function PortalChitraDashboard({
           </section>
         ) : (
           <section className="grid gap-5 md:grid-cols-2 2xl:grid-cols-3">
-            {filteredApps.map((app) => (
-              <article
-                key={app.id}
-                className="group flex h-full flex-col justify-between rounded-[1.4rem] bg-white p-5 shadow-[0_16px_36px_rgba(8,32,51,0.06)] ring-1 ring-[#dbe8f1] transition duration-300 hover:-translate-y-1.5 hover:shadow-[0_28px_54px_rgba(8,32,51,0.12)]"
-              >
-                <div>
-                  <div className="flex items-start justify-between gap-3">
-                    <span
-                      className="flex size-13 items-center justify-center rounded-[1rem] text-white shadow-[0_14px_28px_rgba(8,32,51,0.18)]"
-                      style={{ backgroundColor: app.color }}
-                    >
-                      <PortalChitraIcon name={app.iconName} className="size-6" />
-                    </span>
-                    <Badge className="rounded-full border-0 bg-[#f3faff] px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-[#486275]">
-                      {app.category}
-                    </Badge>
-                  </div>
+            {filteredApps.map((app) => {
+              const hero3d = findHero3dIcon({ title: app.name, url: app.url });
+              return (
+                <article
+                  key={app.id}
+                  className="group flex h-full flex-col justify-between rounded-[1.4rem] bg-white p-5 shadow-[0_16px_36px_rgba(8,32,51,0.06)] ring-1 ring-[#dbe8f1] transition duration-300 hover:-translate-y-1.5 hover:shadow-[0_28px_54px_rgba(8,32,51,0.12)]"
+                >
+                  <div>
+                    <div className="flex items-start justify-between gap-3">
+                      <span
+                        className={cn(
+                          "flex size-13 items-center justify-center rounded-[1rem] shadow-[0_14px_28px_rgba(8,32,51,0.18)]",
+                          hero3d ? "bg-slate-50 border border-slate-100/90 p-2" : "text-white"
+                        )}
+                        style={hero3d ? undefined : { backgroundColor: app.color }}
+                      >
+                        {hero3d ? (
+                          <Image
+                            src={hero3d.polosUrl}
+                            alt={app.name}
+                            width={40}
+                            height={40}
+                            unoptimized
+                            className="size-9 object-contain select-none pointer-events-none drop-shadow-xs"
+                          />
+                        ) : (
+                          <PortalChitraIcon name={app.iconName} className="size-6" />
+                        )}
+                      </span>
+                      <Badge className="rounded-full border-0 bg-[#f3faff] px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-[#486275]">
+                        {app.category}
+                      </Badge>
+                    </div>
 
                   <h3 className="mt-5 text-xl font-black tracking-tight text-[#082033] transition group-hover:text-[#003f78]">
                     {app.name}
@@ -189,8 +207,9 @@ export function PortalChitraDashboard({
                   </a>
                 </div>
               </article>
-            ))}
-          </section>
+            );
+          })}
+        </section>
         )}
       </div>
     </div>
