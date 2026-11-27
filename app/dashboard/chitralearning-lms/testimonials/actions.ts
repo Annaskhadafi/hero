@@ -324,6 +324,8 @@ export async function submitLmsTestimonial(input: CreateTestimonialInput) {
       .returning({ id: chitraLearningTestimonials.id })
 
     revalidatePath(TESTIMONIALS_PATH)
+    revalidatePath('/mobile/chitralearning/testimonials')
+    revalidatePath('/mobile/chitralearning')
     return { success: true, id: inserted.id, message: 'Testimoni Anda berhasil dikirim!' }
   } catch (err: any) {
     console.error('[submitLmsTestimonial] error:', err)
@@ -371,6 +373,8 @@ export async function deleteLmsTestimonial(id: number) {
 
     await db.delete(chitraLearningTestimonials).where(eq(chitraLearningTestimonials.id, id))
     revalidatePath(TESTIMONIALS_PATH)
+    revalidatePath('/mobile/chitralearning/testimonials')
+    revalidatePath('/mobile/chitralearning')
     return { success: true, message: 'Testimoni berhasil dihapus.' }
   } catch (err: any) {
     console.error('[deleteLmsTestimonial] error:', err)

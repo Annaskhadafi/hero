@@ -8,8 +8,9 @@ import { getInternalLmsWorkspaceData, buildInternalLmsLearnerCourses } from '@/l
 import { MobileCourseCover } from '@/components/mobile/mobile-course-cover'
 import {
   BookOpen, Award, ChevronRight, Play, Clock, Layers, Star,
-  TrendingUp, CheckCircle2, Compass
+  TrendingUp, CheckCircle2, Compass, MessageSquareQuote
 } from 'lucide-react'
+import { getLmsTestimonials } from '@/app/dashboard/chitralearning-lms/testimonials/actions'
 
 function formatDuration(minutes: number) {
   if (!minutes) return '0m'
@@ -29,9 +30,10 @@ export default async function MobileChitraLearningHome() {
   const session = await getServerSession()
   if (!session?.user?.email) redirect('/sign-in')
 
-  const [currentEmployeeRows, workspaceData] = await Promise.all([
+  const [currentEmployeeRows, workspaceData, recentTestimonials] = await Promise.all([
     db.select().from(employees).where(eq(employees.email, session.user.email)).limit(1),
     getInternalLmsWorkspaceData(),
+    getLmsTestimonials({ ratingFilter: 5 }).then(list => list.slice(0, 3)).catch(() => []),
   ])
 
   const currentEmployee = currentEmployeeRows[0] || null
@@ -145,23 +147,24 @@ export default async function MobileChitraLearningHome() {
         </section>
       )}
 
-      {/* Quick Nav */}
-      <section className="grid grid-cols-4 gap-2">
+      {/* Quick Nav (5 Items) */}
+      <section className="grid grid-cols-5 gap-1.5">
         {[
           { href: '/mobile/chitralearning/courses', icon: Compass, label: 'Jelajahi', bg: 'bg-[#e9f6fd]', color: 'text-[#003461]' },
           { href: '/mobile/chitralearning/my-learning', icon: BookOpen, label: 'Kursus Saya', bg: 'bg-[#f0fdf4]', color: 'text-emerald-700' },
           { href: '/mobile/chitralearning/certificates', icon: Award, label: 'Sertifikat', bg: 'bg-[#fefce8]', color: 'text-amber-700' },
           { href: '/mobile/chitralearning/my-learning?tab=pending', icon: TrendingUp, label: 'Pengajuan', bg: 'bg-[#fdf4ff]', color: 'text-purple-700' },
+          { href: '/mobile/chitralearning/testimonials', icon: MessageSquareQuote, label: 'Testimoni', bg: 'bg-[#fff1f2]', color: 'text-rose-600' },
         ].map(item => (
           <Link
             key={item.href}
             href={item.href}
             className="flex flex-col items-center gap-1.5 active:scale-95 transition-transform"
           >
-            <span className={`flex size-12 items-center justify-center rounded-2xl ${item.bg} ${item.color} shadow-[0_4px_14px_rgba(8,32,51,0.07)]`}>
+            <span className={`flex size-11 sm:size-12 items-center justify-center rounded-2xl ${item.bg} ${item.color} shadow-[0_4px_14px_rgba(8,32,51,0.07)]`}>
               <item.icon className="size-5" />
             </span>
-            <span className="text-[9px] font-black uppercase tracking-[0.06em] text-[#486275] text-center leading-tight">{item.label}</span>
+            <span className="text-[9px] font-black uppercase tracking-[0.04em] text-[#486275] text-center leading-tight">{item.label}</span>
           </Link>
         ))}
       </section>
@@ -252,6 +255,55 @@ export default async function MobileChitraLearningHome() {
                   </div>
                 </div>
                 <ChevronRight className="size-4 shrink-0 text-[#486275]" />
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Testimoni Rekan Kerja Section */}
+      {recentTestimonials.length > 0 && (
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#486275]">Testimoni Rekan Kerja</p>
+              <h2 className="text-base font-black text-[#003461]">Apa Kata Mereka?</h2>
+            </div>
+            <Link href="/mobile/chitralearning/testimonials" className="flex items-center gap-0.5 text-[11px] font-black text-[#003461] hover:underline">
+              Lihat Semua ({recentTestimonials.length}) <ChevronRight className="size-3" />
+            </Link>
+          </div>
+          <div className="space-y-2.5">
+            {recentTestimonials.map(t => (
+              <Link
+                key={t.id}
+                href="/mobile/chitralearning/testimonials"
+                className="block rounded-[1.2rem] bg-white p-4 shadow-[0_8px_24px_rgba(8,32,51,0.06)] active:scale-[0.99] transition-transform border border-slate-100"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="flex size-7 items-center justify-center rounded-full bg-[#003461] text-[10px] font-black text-white shrink-0">
+                      {t.author.name?.slice(0, 2).toUpperCase() || 'CP'}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-black text-[#082033] truncate">{t.author.name}</p>
+                      <p className="text-[9px] font-semibold text-[#486275] truncate">{t.author.jobTitle || t.author.department}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                    <Star className="size-3 fill-amber-400 text-amber-500" />
+                    <span className="text-[10px] font-black text-amber-700">{t.rating}.0</span>
+                  </div>
+                </div>
+                <p className="text-xs font-medium text-[#082033] line-clamp-2 italic text-slate-700">
+                  &ldquo;{t.experienceReview}&rdquo;
+                </p>
+                <div className="mt-2 flex items-center justify-between text-[9px] font-bold text-[#486275]">
+                  <span className="inline-block truncate max-w-[200px] text-[#003461] font-semibold">
+                    Modul: {t.trainingTitle}
+                  </span>
+                  <span>{new Date(t.createdAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                </div>
               </Link>
             ))}
           </div>
