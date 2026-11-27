@@ -77,5 +77,32 @@ test('verify cost center column and dialog inputs in user management directory',
 
     // Capture Screenshot 4: Import Update Modal with download template button
     await app.screenshot('04-security-users-export-and-import-update-modal');
+
+    // Close import modal
+    const closeImportBtn = browser.locator('div[role="dialog"] button:has-text("Batal"), div[role="dialog"] button:has-text("Close"), div[role="dialog"] button[aria-label="Close"]').first();
+    if (await closeImportBtn.isVisible()) {
+      await closeImportBtn.click();
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+  }
+
+  // 8. Test Tab Karyawan Permanen
+  const permanentTab = browser.locator('button:has-text("Karyawan Permanen")').first();
+  if (await permanentTab.isVisible()) {
+    await permanentTab.click();
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    const permCostCenterTh = browser.locator('th:has-text("Cost Center")').first();
+    await expect(permCostCenterTh).toBeVisible({ timeout: 15000 });
+    await app.screenshot('05-security-users-permanent-tab-cost-center');
+  }
+
+  // 9. Test Tab Karyawan Kontrak
+  const contractTab = browser.locator('button:has-text("Karyawan Kontrak")').first();
+  if (await contractTab.isVisible()) {
+    await contractTab.click();
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    const contractCostCenterTh = browser.locator('th:has-text("Cost Center")').first();
+    await expect(contractCostCenterTh).toBeVisible({ timeout: 15000 });
+    await app.screenshot('06-security-users-contract-tab-cost-center');
   }
 });

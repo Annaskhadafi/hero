@@ -140,6 +140,7 @@ export function SecurityContractUsersTab({ users }: SecurityContractUsersTabProp
         (u.department || '').toLowerCase().includes(search.toLowerCase()) ||
         (u.section || '').toLowerCase().includes(search.toLowerCase()) ||
         (u.jobTitle || '').toLowerCase().includes(search.toLowerCase()) ||
+        (u.costCenter || '').toLowerCase().includes(search.toLowerCase()) ||
         (u.siteName || u.workLocation || '').toLowerCase().includes(search.toLowerCase()) ||
         (u.pointOfHire || '').toLowerCase().includes(search.toLowerCase())
 
@@ -170,6 +171,7 @@ export function SecurityContractUsersTab({ users }: SecurityContractUsersTabProp
       'Departemen',
       'Seksi',
       'Jabatan',
+      'Cost Center',
       'Lokasi Site',
       'POH',
       'Mulai Kontrak',
@@ -188,6 +190,7 @@ export function SecurityContractUsersTab({ users }: SecurityContractUsersTabProp
         `"${(u.department || '').replace(/"/g, '""')}"`,
         `"${(u.section || '').replace(/"/g, '""')}"`,
         `"${(u.jobTitle || '').replace(/"/g, '""')}"`,
+        `"${(u.costCenter || '').replace(/"/g, '""')}"`,
         `"${(u.siteName || u.workLocation || '').replace(/"/g, '""')}"`,
         `"${(u.pointOfHire || '').replace(/"/g, '""')}"`,
         u.contractDurationStart ? format(new Date(u.contractDurationStart), 'yyyy-MM-dd') : '-',
@@ -408,6 +411,7 @@ export function SecurityContractUsersTab({ users }: SecurityContractUsersTabProp
                 <th className="py-3 px-3">Departemen</th>
                 <th className="py-3 px-3">Seksi</th>
                 <th className="py-3 px-3">Jabatan</th>
+                <th className="py-3 px-3">Cost Center</th>
                 <th className="py-3 px-3">Lokasi Site</th>
                 <th className="py-3 px-3">POH</th>
                 <th className="py-3 px-3">Mulai Kontrak</th>
@@ -420,7 +424,7 @@ export function SecurityContractUsersTab({ users }: SecurityContractUsersTabProp
             <tbody className="divide-y divide-border/40">
               {paginatedUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={13} className="py-10 text-center text-muted-foreground">
+                  <td colSpan={14} className="py-10 text-center text-muted-foreground">
                     Tidak ada data karyawan kontrak yang sesuai filter.
                   </td>
                 </tr>
@@ -470,6 +474,11 @@ export function SecurityContractUsersTab({ users }: SecurityContractUsersTabProp
                       </td>
                       <td className="py-2.5 px-3 text-foreground/85 font-medium">
                         {u.jobTitle || '-'}
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <Badge variant="outline" className="font-mono text-[11px] font-semibold">
+                          {u.costCenter || '-'}
+                        </Badge>
                       </td>
                       <td className="py-2.5 px-3">
                         <span className="inline-flex items-center gap-1 text-[11px] text-amber-700 dark:text-amber-300 font-medium bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded-md">
