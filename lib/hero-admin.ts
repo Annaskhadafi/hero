@@ -2069,6 +2069,18 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'Central Service',
+    groupLabel: 'Logistik & Fleet',
+    title: 'Fuel Management',
+    url: '/dashboard/fuel-management',
+    iconName: 'truck',
+    resource: 'fuel_management',
+    sortOrder: 14,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'Central Service',
     groupLabel: 'Field Analysis',
     title: 'Site Condition Report',
     url: '/dashboard/central-service/site-condition',
@@ -5003,6 +5015,38 @@ function getDefaultMenuPermission(roleName: string, resource: string) {
     }
   }
 
+  // Fuel Management & Central Service Refueling
+  if (resource === 'fuel_management' || resource === 'central_service_refueling') {
+    const isFullAccess =
+      isSuperAdminRole(roleName) ||
+      roleName === 'Manager' ||
+      roleName === 'Central Services Manager' ||
+      roleName === 'CENTRAL SERVICES' ||
+      roleName === 'Site Admin' ||
+      roleName === 'PJO SITE' ||
+      roleName === 'FIELD TEAM' ||
+      roleName === 'Tyre Technician / Field Service' ||
+      roleName === 'BALIKPAPAN' ||
+      roleName === 'Supply Chain Manager' ||
+      roleName === 'Warehouse & Inventory Officer' ||
+      roleName === 'Khusus Mas Rendi'
+
+    const isReadOnly =
+      roleName === 'Executive / BoD' ||
+      roleName === 'General Manager' ||
+      roleName === 'Quality & CPI Manager' ||
+      roleName === 'Quality Auditor'
+
+    const canView = isFullAccess || isReadOnly
+    return {
+      canView,
+      canEdit: isFullAccess,
+      canDelete: isSuperAdminRole(roleName) || roleName === 'Site Admin',
+      canSelectAll: isFullAccess,
+      dataScope: 'global' as const,
+    }
+  }
+
   // Approval Monitor: Dedicated to Super Admin by default
   if (resource === 'approval_monitor') {
     const isSuperAdmin = roleName === 'Super Admin'
@@ -6566,7 +6610,7 @@ export async function ensureHeroGovernanceSeedData() {
         )
       )
 
-    // Ensure Re-Fueling LV is in Central Service
+    // Ensure Re-Fueling LV & Fuel Management are in Central Service
     await db
       .update(navbarMenuItems)
       .set({
@@ -6579,6 +6623,21 @@ export async function ensureHeroGovernanceSeedData() {
         or(
           eq(navbarMenuItems.resource, 'central_service_refueling'),
           eq(navbarMenuItems.url, '/dashboard/central-service/refueling')
+        )
+      )
+
+    await db
+      .update(navbarMenuItems)
+      .set({
+        section: 'Central Service',
+        groupLabel: 'Logistik & Fleet',
+        title: 'Fuel Management',
+        isVisible: true,
+      })
+      .where(
+        or(
+          eq(navbarMenuItems.resource, 'fuel_management'),
+          eq(navbarMenuItems.url, '/dashboard/fuel-management')
         )
       )
 

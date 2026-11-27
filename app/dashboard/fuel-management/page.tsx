@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { getServerSession } from '@/lib/auth-session'
+import { getCurrentMenuPermission } from '@/lib/hero-access'
 import {
   getFuelDashboardData,
   getFuelEquipmentList,
@@ -16,6 +17,11 @@ export default async function DashboardFuelManagementPage() {
   const session = await getServerSession()
   if (!session?.user) {
     redirect('/sign-in')
+  }
+
+  const access = await getCurrentMenuPermission('fuel_management')
+  if (!access.canView) {
+    redirect('/dashboard')
   }
 
   const [dashboardData, equipmentList, recentTx] = await Promise.all([

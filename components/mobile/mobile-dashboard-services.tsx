@@ -127,6 +127,8 @@ function resolveServiceCategory(item: { section?: string; title: string }): Cate
     t.includes('material') ||
     t.includes('atk') ||
     t.includes('assets') ||
+    t.includes('fuel') ||
+    t.includes('cargo') ||
     s.includes('logistik')
   ) {
     return 'Logistik & Alat'
