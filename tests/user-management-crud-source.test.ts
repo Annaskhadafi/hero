@@ -60,6 +60,8 @@ describe('user management CRUD source of truth', () => {
 
     expect(section).toContain('const mappedHeaders = autoMapHeaders(headers)')
     expect(section).toContain("name: 'fullName'")
+    expect(section).toContain("'job title': 'jobTitle'")
+    expect(section).toContain("'cost center': 'costCenter'")
     expect(section).toContain("'lokasi site': 'workLocation'")
     expect(section).toContain('isColumnSelected(headers[')
     expect(source).toContain("(\\d{2}|\\d{4})")
@@ -115,5 +117,18 @@ describe('user management CRUD source of truth', () => {
     expect(updateSection).toContain('emailAuthOwner')
     expect(updateSection).toContain('email,')
     expect(updateSection).toContain('updateCredentialEmailAccountId')
+  })
+
+  it('includes Cost Center in filtered and all user export templates', () => {
+    const source = read('components/security-user-management.tsx')
+    const expVisStart = source.indexOf('function exportVisibleUsers()')
+    const expVisEnd = source.indexOf('function exportAllUsers()', expVisStart)
+    const expVisSection = source.slice(expVisStart, expVisEnd)
+    const expAllSection = source.slice(expVisEnd, source.indexOf('return (', expVisEnd))
+
+    expect(expVisSection).toContain("'Cost Center'")
+    expect(expVisSection).toContain('user.costCenter')
+    expect(expAllSection).toContain("'Cost Center'")
+    expect(expAllSection).toContain('user.costCenter')
   })
 })

@@ -8028,6 +8028,7 @@ export async function importUpdateUsersAction(
       department: 'department',
       section: 'section',
       'job title': 'jobTitle',
+      'cost center': 'costCenter',
       'level staff': 'levelName',
       peran: 'accessRole',
       'lokasi site': 'workLocation',
@@ -8067,6 +8068,7 @@ export async function importUpdateUsersAction(
         department: employees.department,
         section: employees.section,
         jobTitle: employees.jobTitle,
+        costCenter: employees.costCenter,
         levelName: employees.levelName,
         gender: employees.gender,
         religion: employees.religion,
@@ -8316,7 +8318,7 @@ export async function importUpdateUsersAction(
       }
       if (costCenterIdx !== undefined && isColumnSelected(headers[costCenterIdx])) {
         const v = getValue(costCenterIdx)
-        if (v !== undefined) employeeUpdate.costCenter = v
+        if (v !== undefined) employeeUpdate.costCenter = v === '-' ? '' : v
       }
       if (levelNameIdx !== undefined && isColumnSelected(headers[levelNameIdx])) {
         const v = getValue(levelNameIdx)

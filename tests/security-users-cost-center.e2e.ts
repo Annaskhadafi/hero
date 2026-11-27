@@ -53,5 +53,29 @@ test('verify cost center column and dialog inputs in user management directory',
 
     // Capture Screenshot 3: Edit user dialog with Cost Center input
     await app.screenshot('03-security-users-edit-dialog-cost-center');
+
+    // Close edit dialog
+    const closeEditBtn = browser.locator('div[role="dialog"] button:has-text("Batal"), div[role="dialog"] button:has-text("Close"), div[role="dialog"] button[aria-label="Close"]').first();
+    if (await closeEditBtn.isVisible()) {
+      await closeEditBtn.click();
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+  }
+
+  // 6. Verify "Export Terfilter" button is visible and active
+  const exportBtn = browser.locator('button:has-text("Export Terfilter")').first();
+  await expect(exportBtn).toBeVisible();
+
+  // 7. Verify Import Data modal with "Download template / data existing" button
+  const importDataBtn = browser.locator('button:has-text("Import Data")').first();
+  if (await importDataBtn.isVisible()) {
+    await importDataBtn.click();
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    const downloadTemplateBtn = browser.locator('button:has-text("Download template / data existing")').first();
+    await expect(downloadTemplateBtn).toBeVisible();
+
+    // Capture Screenshot 4: Import Update Modal with download template button
+    await app.screenshot('04-security-users-export-and-import-update-modal');
   }
 });

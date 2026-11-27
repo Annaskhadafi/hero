@@ -606,13 +606,14 @@ export function SecurityUserManagement({
 
   function exportVisibleUsers() {
     exportRowsToFile({
-      columns: ['Nama', 'SN', 'Departemen', 'Section', 'Job Title', 'Level Staff', 'Peran', 'Lokasi Site', 'Tipe Status', 'Gender', 'Agama', 'Pendidikan', 'Marital Status', 'POH', 'Join Date', 'Contract Start', 'Contract End', 'Permanent Date', 'Tgl Lahir', 'Status Akun'],
+      columns: ['Nama', 'SN', 'Departemen', 'Section', 'Job Title', 'Cost Center', 'Level Staff', 'Peran', 'Lokasi Site', 'Tipe Status', 'Gender', 'Agama', 'Pendidikan', 'Marital Status', 'POH', 'Join Date', 'Contract Start', 'Contract End', 'Permanent Date', 'Tgl Lahir', 'Status Akun'],
       rows: filteredUsers.map((user) => [
         user.name,
         user.employeeSn,
         user.department,
         user.section,
         user.jobTitle,
+        user.costCenter || '',
         user.levelName,
         user.accessRole,
         getSiteDisplayName(user),
@@ -635,13 +636,14 @@ export function SecurityUserManagement({
 
   function exportAllUsers() {
     exportRowsToFile({
-      columns: ['Nama', 'SN', 'Departemen', 'Section', 'Job Title', 'Level Staff', 'Peran', 'Lokasi Site', 'Tipe Status', 'Gender', 'Agama', 'Pendidikan', 'Marital Status', 'POH', 'Join Date', 'Contract Start', 'Contract End', 'Permanent Date', 'Tgl Lahir', 'Status Akun', 'Email', 'Phone Number', 'Domisili'],
+      columns: ['Nama', 'SN', 'Departemen', 'Section', 'Job Title', 'Cost Center', 'Level Staff', 'Peran', 'Lokasi Site', 'Tipe Status', 'Gender', 'Agama', 'Pendidikan', 'Marital Status', 'POH', 'Join Date', 'Contract Start', 'Contract End', 'Permanent Date', 'Tgl Lahir', 'Status Akun', 'Email', 'Phone Number', 'Domisili'],
       rows: users.map((user) => [
         user.name,
         user.employeeSn,
         user.department,
         user.section,
         user.jobTitle,
+        user.costCenter || '',
         user.levelName,
         user.accessRole,
         getSiteDisplayName(user),
