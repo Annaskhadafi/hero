@@ -337,3 +337,7 @@ export * from './asset-disposal'
 
 // Expo & Sales - Business Card Scanner
 export * from './expo-business-cards'
+
+// Operations - Fuel Management Module
+export * from './fuel-management'
+
