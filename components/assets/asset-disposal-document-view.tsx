@@ -115,14 +115,22 @@ export function AssetDisposalDocumentView({
               : app.signatureUrl || null
 
         let header = 'DISETUJUI OLEH'
-        if (app.title.toLowerCase().includes('finance') || app.title.toLowerCase().includes('verifikasi')) {
+        const lowerTitle = (app.title || '').toLowerCase()
+        const lowerName = (app.approverName || '').toLowerCase()
+        const lowerJob = (app.jobTitle || '').toLowerCase()
+
+        if (lowerName.includes('amama ira') || (lowerTitle.includes('finance') && (lowerTitle.includes('supervisor') || lowerJob.includes('supervisor') || lowerTitle.includes('spv')))) {
+          header = 'DIPERIKSA OLEH (FINANCE SPV)'
+        } else if (lowerName.includes('febrian dani') || (lowerTitle.includes('finance') && (lowerTitle.includes('manager') || lowerJob.includes('manager') || lowerTitle.includes('mgr')))) {
+          header = 'DISETUJUI OLEH (FINANCE MGR)'
+        } else if (lowerTitle.includes('finance') || lowerTitle.includes('verifikasi')) {
           header = 'DIPERIKSA OLEH (FINANCE)'
-        } else if (app.title.toLowerCase().includes('manager') || app.title.toLowerCase().includes('dept')) {
-          header = 'DISETUJUI OLEH (DEPT HEAD)'
-        } else if (app.title.toLowerCase().includes('general manager') || app.title.toLowerCase().includes('gm')) {
+        } else if (lowerTitle.includes('general manager') || lowerTitle.includes('gm')) {
           header = 'DISETUJUI OLEH (GM)'
-        } else if (app.title.toLowerCase().includes('director') || app.title.toLowerCase().includes('direktur')) {
+        } else if (lowerTitle.includes('director') || lowerTitle.includes('direktur')) {
           header = 'DISETUJUI OLEH (DIREKSI)'
+        } else if (lowerTitle.includes('manager') || lowerTitle.includes('dept')) {
+          header = 'DISETUJUI OLEH (DEPT HEAD)'
         }
 
         return {

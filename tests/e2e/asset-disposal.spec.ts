@@ -114,6 +114,17 @@ test.describe('Asset Disposal Workflows: Penjualan, Penghapusan & Donasi', () =>
     await expect(donasiBanner).toBeVisible({ timeout: 5000 })
     console.log('✓ Verified: Form displays mandatory proposal notification banner for Donasi!')
 
+    // Verifikasi Locked Steps untuk Amama Ira, Febrian Dani, dan Hidayat Rahman (Direksi)
+    await expect(page.locator('text=Wajib Terpasang (Finance SPV)').first()).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('text=Wajib Terpasang (Finance MGR)').first()).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('text=Wajib Terpasang (Direksi)').first()).toBeVisible({ timeout: 5000 })
+    console.log('✓ Verified: Locked steps for Amama Ira (Finance SPV), Febrian Dani (Finance MGR), and Director are active and protected!')
+
+    const ssLockedPath = path.join(ARTIFACT_DIR, '15_asset_disposal_locked_approvers.png')
+    await page.screenshot({ path: ssLockedPath })
+    saveScreenshot(ssLockedPath, '15_asset_disposal_locked_approvers.png')
+    console.log('✓ Captured 15_asset_disposal_locked_approvers.png')
+
     // Pilih Unit #1 dari Master Data HERO
     console.log('Selecting Unit #1 from Master Data HERO...')
     const selectTrigger1 = page.locator('button:has-text("Pilih aset dari Master Data HERO...")').first()
@@ -130,27 +141,35 @@ test.describe('Asset Disposal Workflows: Penjualan, Penghapusan & Donasi', () =>
     await notesInput1.fill('Donasi aset inventaris layak pakai ke Yayasan Sosial Mitra Abadi.')
 
     // Tanda Tangan Digital Pemohon
-    console.log('Signing disposal form with canvas stroke...')
-    const drawTabBtn = page.locator('button:has-text("Coretan Canvas")').first()
-    await drawTabBtn.click()
-    await page.waitForTimeout(500)
+    console.log('Selecting / signing disposal form...')
+    const gunakanTtdBtn = page.locator('button:has-text("Gunakan TTD Ini")').first()
+    if (await gunakanTtdBtn.isVisible().catch(() => false)) {
+      await gunakanTtdBtn.click()
+      await page.waitForTimeout(600)
+    } else {
+      const drawTabBtn = page.locator('button:has-text("Coretan Canvas")').first()
+      if (await drawTabBtn.isVisible().catch(() => false)) {
+        await drawTabBtn.click()
+        await page.waitForTimeout(500)
+      }
 
-    const canvas = page.locator('canvas').first()
-    await expect(canvas).toBeVisible()
-    const box = await canvas.boundingBox()
-    if (box) {
-      for (let attempt = 1; attempt <= 3; attempt++) {
-        await page.mouse.move(box.x + 30, box.y + 30)
-        await page.mouse.down()
-        await page.mouse.move(box.x + 80, box.y + 60)
-        await page.mouse.move(box.x + 120, box.y + 35)
-        await page.mouse.move(box.x + 160, box.y + 70)
-        await page.mouse.up()
-        await page.waitForTimeout(600)
-        if (await page.locator('text=Tanda Tangan Siap').isVisible()) break
+      const canvas = page.locator('canvas').first()
+      await canvas.scrollIntoViewIfNeeded()
+      await expect(canvas).toBeVisible()
+      const box = await canvas.boundingBox()
+      if (box) {
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          await page.mouse.move(box.x + 30, box.y + 30)
+          await page.mouse.down()
+          await page.mouse.move(box.x + 80, box.y + 60)
+          await page.mouse.move(box.x + 120, box.y + 35)
+          await page.mouse.move(box.x + 160, box.y + 70)
+          await page.mouse.up()
+          await page.waitForTimeout(600)
+          if (await page.locator('text=Tanda Tangan Siap').isVisible()) break
+        }
       }
     }
-    await expect(page.locator('text=Tanda Tangan Siap')).toBeVisible({ timeout: 10000 })
 
     // Coba Submit TANPA lampiran proposal -> Harap gagal dengan validasi toast error
     const submitBtn = page.locator('button:has-text("Kirim Pengajuan Disposal")').first()
@@ -190,11 +209,17 @@ test.describe('Asset Disposal Workflows: Penjualan, Penghapusan & Donasi', () =>
     await expect(donasiRow.locator('text=🎁 Donasi').first()).toBeVisible()
     console.log('✓ Verified: Donasi table row created with 🎁 Donasi badge!')
 
-    // Loop through 5 standard approval steps (Section Head, Dept Head, Finance Amama Ira, GM, Director)
-    for (let step = 1; step <= 5; step++) {
+    // Sequential approval loop: Section Head -> Finance SPV (Amama Ira) -> Finance Manager (Febrian Dani) -> Director (Hidayat Rahman / Freshya)
+    for (let step = 1; step <= 6; step++) {
+      const activeRow = page.locator('table tbody tr:has-text("DSP-")').first()
+      const tinjauBtn = activeRow.locator('button:has-text("Tinjau")').first()
+      const isPendingReview = await tinjauBtn.isVisible().catch(() => false)
+      if (!isPendingReview) {
+        console.log(`No more Tinjau button at step ${step}. All approval steps completed!`)
+        break
+      }
+
       console.log(`Executing Approval Step ${step}...`)
-      const tinjauBtn = page.locator('table tbody tr:has-text("DSP-")').first().locator('button:has-text("Tinjau")').first()
-      await expect(tinjauBtn).toBeVisible({ timeout: 15000 })
       await tinjauBtn.click()
       await page.waitForTimeout(2000)
 

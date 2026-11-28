@@ -247,9 +247,28 @@ export async function getAssetDisposalDetail(id: number) {
   }
 }
 
+function isDepartmentDirectToDirector(deptCode?: string | null, deptName?: string | null): boolean {
+  const code = (deptCode || '').toUpperCase()
+  const name = (deptName || '').toLowerCase()
+  return (
+    code === 'F-BIMA' ||
+    code === 'BIMA' ||
+    code === 'HC' ||
+    code === 'LEGAL' ||
+    code === 'MAN' ||
+    name.includes('finance') ||
+    name.includes('human capital') ||
+    name.includes('legal') ||
+    name.includes('director') ||
+    name.includes('bi & marketing')
+  )
+}
+
 /**
  * Dynamic Approval Hierarchy Resolver:
- * Resolves standard organizational chain up to Director, ensuring Amama Ira is mandatory before General Manager.
+ * Resolves standard organizational chain up to Director, ensuring Amama Ira & Febrian Dani are mandatory sequential finance verifiers.
+ * If applicant belongs to direct-to-Director departments (Finance, HC, Legal), General Manager is skipped.
+ * Otherwise, General Manager is inserted before Director.
  * If disposalType === 'Penjualan', inserts Procurement (Rajab & Sofyan) between Manager and Finance for price estimation.
  */
 export async function getDisposalDefaultApprovers(applicantEmployeeId?: number, disposalType?: string) {
@@ -265,7 +284,18 @@ export async function getDisposalDefaultApprovers(applicantEmployeeId?: number, 
       .where(or(ilike(employees.name, '%Amama Ira%'), eq(employees.employeeSn, '76436')))
       .limit(1)
 
-    // 2. Fetch General Manager (Person Sihaloho - ID 940)
+    // 2. Fetch Febrian Dani (Finance Business Partners Manager - ID 960)
+    const [febrianDani] = await db
+      .select({
+        id: employees.id,
+        name: employees.name,
+        jobTitle: employees.jobTitle,
+      })
+      .from(employees)
+      .where(or(ilike(employees.name, '%Febrian Dani%'), eq(employees.id, 960)))
+      .limit(1)
+
+    // 3. Fetch General Manager (Person Sihaloho - ID 940)
     const [generalManager] = await db
       .select({
         id: employees.id,
@@ -276,7 +306,7 @@ export async function getDisposalDefaultApprovers(applicantEmployeeId?: number, 
       .where(or(ilike(employees.jobTitle, '%General Manager%'), eq(employees.id, 940)))
       .limit(1)
 
-    // 3. Fetch Director (Hidayat Rahman - ID 10)
+    // 4. Fetch Director (Hidayat Rahman - ID 10)
     const [director] = await db
       .select({
         id: employees.id,
@@ -287,7 +317,7 @@ export async function getDisposalDefaultApprovers(applicantEmployeeId?: number, 
       .where(or(ilike(employees.jobTitle, '%Director%'), eq(employees.id, 10)))
       .limit(1)
 
-    // 4. Fetch Procurement (Abd.Rajab ID 985 / Sofyan Darmawan ID 1143) for sale category
+    // 5. Fetch Procurement (Abd.Rajab ID 985 / Sofyan Darmawan ID 1143) for sale category
     const [procurement] = await db
       .select({
         id: employees.id,
@@ -298,18 +328,29 @@ export async function getDisposalDefaultApprovers(applicantEmployeeId?: number, 
       .where(or(ilike(employees.name, '%Rajab%'), eq(employees.id, 985), ilike(employees.name, '%Sofyan Darmawan%')))
       .limit(1)
 
-    // 5. Resolve applicant's Section Head and Dept Head
+    // 6. Resolve applicant's Section Head and Dept Head
+    let isDirectToDirector = false
     let step1Approver: { id: number; name: string; jobTitle: string } | null = null
     let step2Approver: { id: number; name: string; jobTitle: string } | null = null
 
     if (applicantEmployeeId) {
       const [applicant] = await db
-        .select()
+        .select({
+          id: employees.id,
+          directManagerId: employees.directManagerId,
+          sectionId: employees.sectionId,
+          departmentId: employees.departmentId,
+          deptCode: masterDepartments.code,
+          deptName: masterDepartments.name,
+        })
         .from(employees)
+        .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
         .where(eq(employees.id, applicantEmployeeId))
         .limit(1)
 
       if (applicant) {
+        isDirectToDirector = isDepartmentDirectToDirector(applicant.deptCode, applicant.deptName)
+
         // Direct manager or section head
         if (applicant.directManagerId && applicant.directManagerId !== applicant.id) {
           const [dm] = await db
@@ -365,98 +406,89 @@ export async function getDisposalDefaultApprovers(applicantEmployeeId?: number, 
       }
     }
 
-    if (!step2Approver) {
-      step2Approver = {
-        id: 960,
-        name: 'Febrian Dani',
-        jobTitle: 'Finance Business Partners Manager',
-      }
+    const isSale = disposalType === 'Penjualan'
+    const rawSteps: DisposalApproverStep[] = []
+
+    // 1. Step Atasan Langsung / Section Head
+    rawSteps.push({
+      level: 1,
+      title: 'Step 1: Atasan Langsung / Section Head (Mengetahui)',
+      approverEmployeeId: step1Approver.id,
+      approverName: step1Approver.name,
+      jobTitle: step1Approver.jobTitle,
+    })
+
+    // 2. Step Department Head (jika ada & bukan orang yang sama dengan Section Head atau Finance Manager Febrian Dani / Amama Ira)
+    if (
+      step2Approver &&
+      step2Approver.id !== step1Approver.id &&
+      step2Approver.id !== (febrianDani?.id || 960) &&
+      step2Approver.id !== (amamaIra?.id || 1341)
+    ) {
+      rawSteps.push({
+        level: 2,
+        title: 'Step 2: Department Head / Manager (Menyetujui)',
+        approverEmployeeId: step2Approver.id,
+        approverName: step2Approver.name,
+        jobTitle: step2Approver.jobTitle,
+      })
     }
 
-    // Assemble hierarchy: If Penjualan, insert Procurement (Rajab & Sofyan) as Step 3
-    const isSale = disposalType === 'Penjualan'
-    const defaultSteps: DisposalApproverStep[] = isSale
-      ? [
-          {
-            level: 1,
-            title: 'Step 1: Atasan Langsung / Section Head (Mengetahui)',
-            approverEmployeeId: step1Approver.id,
-            approverName: step1Approver.name,
-            jobTitle: step1Approver.jobTitle,
-          },
-          {
-            level: 2,
-            title: 'Step 2: Department Head / Manager (Menyetujui)',
-            approverEmployeeId: step2Approver.id,
-            approverName: step2Approver.name,
-            jobTitle: step2Approver.jobTitle,
-          },
-          {
-            level: 3,
-            title: 'Step 3: Procurement (Input Estimasi Harga Penjualan)',
-            approverEmployeeId: procurement?.id || 985,
-            approverName: procurement?.name || 'Abd.Rajab',
-            jobTitle: procurement?.jobTitle || 'Procurement Coordinator',
-          },
-          {
-            level: 4,
-            title: 'Step 4: Verifikasi by Finance & Accounting (Amama Ira)',
-            approverEmployeeId: amamaIra?.id || 1341,
-            approverName: amamaIra?.name || 'Amama Ira Amalia Priyono',
-            jobTitle: amamaIra?.jobTitle || 'Finance & Accounting Supervisor',
-          },
-          {
-            level: 5,
-            title: 'Step 5: General Manager (Otorisasi GM)',
-            approverEmployeeId: generalManager?.id || 940,
-            approverName: generalManager?.name || 'Person Sihaloho',
-            jobTitle: generalManager?.jobTitle || 'General Manager',
-          },
-          {
-            level: 6,
-            title: 'Step 6: Director (Persetujuan Final)',
-            approverEmployeeId: director?.id || 10,
-            approverName: director?.name || 'Hidayat Rahman',
-            jobTitle: director?.jobTitle || 'Director',
-          },
-        ]
-      : [
-          {
-            level: 1,
-            title: 'Step 1: Atasan Langsung / Section Head (Mengetahui)',
-            approverEmployeeId: step1Approver.id,
-            approverName: step1Approver.name,
-            jobTitle: step1Approver.jobTitle,
-          },
-          {
-            level: 2,
-            title: 'Step 2: Department Head / Manager (Menyetujui)',
-            approverEmployeeId: step2Approver.id,
-            approverName: step2Approver.name,
-            jobTitle: step2Approver.jobTitle,
-          },
-          {
-            level: 3,
-            title: 'Step 3: Verifikasi by Finance & Accounting (Amama Ira)',
-            approverEmployeeId: amamaIra?.id || 1341,
-            approverName: amamaIra?.name || 'Amama Ira Amalia Priyono',
-            jobTitle: amamaIra?.jobTitle || 'Finance & Accounting Supervisor',
-          },
-          {
-            level: 4,
-            title: 'Step 4: General Manager (Otorisasi GM)',
-            approverEmployeeId: generalManager?.id || 940,
-            approverName: generalManager?.name || 'Person Sihaloho',
-            jobTitle: generalManager?.jobTitle || 'General Manager',
-          },
-          {
-            level: 5,
-            title: 'Step 5: Director (Persetujuan Final)',
-            approverEmployeeId: director?.id || 10,
-            approverName: director?.name || 'Hidayat Rahman',
-            jobTitle: director?.jobTitle || 'Director',
-          },
-        ]
+    // 3. Step Procurement (hanya untuk kategori Penjualan)
+    if (isSale) {
+      rawSteps.push({
+        level: 3,
+        title: 'Step 3: Procurement (Input Estimasi Harga Penjualan)',
+        approverEmployeeId: procurement?.id || 985,
+        approverName: procurement?.name || 'Abd.Rajab',
+        jobTitle: procurement?.jobTitle || 'Procurement Coordinator',
+      })
+    }
+
+    // 4. Step Finance SPV (Amama Ira - Wajib Terpasang)
+    rawSteps.push({
+      level: 4,
+      title: 'Step 4: Verifikasi by Finance & Accounting Supervisor (Amama Ira)',
+      approverEmployeeId: amamaIra?.id || 1341,
+      approverName: amamaIra?.name || 'Amama Ira Amalia Priyono',
+      jobTitle: amamaIra?.jobTitle || 'Finance & Accounting Supervisor',
+    })
+
+    // 5. Step Finance Manager (Febrian Dani - Wajib Terpasang)
+    rawSteps.push({
+      level: 5,
+      title: 'Step 5: Verifikasi by Finance Business Partners Manager (Febrian Dani)',
+      approverEmployeeId: febrianDani?.id || 960,
+      approverName: febrianDani?.name || 'Febrian Dani',
+      jobTitle: febrianDani?.jobTitle || 'Finance Business Partners Manager',
+    })
+
+    // 6. Step General Manager (Person Sihaloho - hanya jika departemen pemohon di bawah GM)
+    if (!isDirectToDirector) {
+      rawSteps.push({
+        level: 6,
+        title: 'Step 6: General Manager (Otorisasi GM)',
+        approverEmployeeId: generalManager?.id || 940,
+        approverName: generalManager?.name || 'Person Sihaloho',
+        jobTitle: generalManager?.jobTitle || 'General Manager',
+      })
+    }
+
+    // 7. Step Director (Hidayat Rahman, Co-Approval: Freshya Ochtovita - Wajib Terpasang)
+    rawSteps.push({
+      level: 7,
+      title: 'Step 7: Director - Hidayat Rahman (Co-Approve: Freshya Ochtovita)',
+      approverEmployeeId: director?.id || 10,
+      approverName: director?.name || 'Hidayat Rahman',
+      jobTitle: director?.jobTitle || 'Director',
+    })
+
+    // Re-index levels 1..N
+    const defaultSteps = rawSteps.map((s, idx) => ({
+      ...s,
+      level: idx + 1,
+      title: s.title.replace(/Step \d+:/, `Step ${idx + 1}:`),
+    }))
 
     return {
       success: true,
@@ -688,7 +720,47 @@ export async function createAssetDisposal(rawInput: AssetDisposalInput) {
       return {
         success: false,
         message:
-          'Validasi Alur Approval: Verifikasi by Finance & Accounting (Amama Ira) wajib disertakan dalam rantai approval.',
+          'Validasi Alur Approval: Verifikasi by Finance & Accounting Supervisor (Amama Ira) wajib disertakan dalam rantai approval.',
+      }
+    }
+
+    // Guardrail: Validate that Febrian Dani (ID 960) exists in the chain
+    const febrianIndex = approvalChain.findIndex(
+      (s) =>
+        s.approverEmployeeId === 960 ||
+        s.approverName.toLowerCase().includes('febrian dani')
+    )
+
+    if (febrianIndex === -1) {
+      return {
+        success: false,
+        message:
+          'Validasi Alur Approval: Verifikasi by Finance Business Partners Manager (Febrian Dani) wajib disertakan dalam rantai approval.',
+      }
+    }
+
+    // Guardrail: Amama Ira must be BEFORE Febrian Dani
+    if (amamaIndex > febrianIndex) {
+      return {
+        success: false,
+        message:
+          'Validasi Alur Approval: Verifikasi Finance SPV (Amama Ira) wajib diposisikan SEBELUM Finance Manager (Febrian Dani).',
+      }
+    }
+
+    // Guardrail: Validate that Director (ID 10) exists in the chain
+    const directorIndex = approvalChain.findIndex(
+      (s) =>
+        s.approverEmployeeId === 10 ||
+        (s.jobTitle && s.jobTitle.toLowerCase().includes('director')) ||
+        (s.title && s.title.toLowerCase().includes('director'))
+    )
+
+    if (directorIndex === -1) {
+      return {
+        success: false,
+        message:
+          'Validasi Alur Approval: Persetujuan Final Direktur (Hidayat Rahman) wajib disertakan dalam rantai approval.',
       }
     }
 
@@ -718,17 +790,34 @@ export async function createAssetDisposal(rawInput: AssetDisposalInput) {
       }
     }
 
-    // Guardrail: Validate that Amama Ira occurs BEFORE General Manager & Director
+    // Guardrail: GM ordering if present
     const gmIndex = approvalChain.findIndex(
       (s) =>
         s.approverEmployeeId === 940 ||
         (s.jobTitle && s.jobTitle.toLowerCase().includes('general manager'))
     )
-    if (gmIndex !== -1 && amamaIndex > gmIndex) {
-      return {
-        success: false,
-        message:
-          'Validasi Alur Approval: Verifikasi Finance & Accounting (Amama Ira) wajib diposisikan SEBELUM General Manager.',
+    if (gmIndex !== -1) {
+      if (febrianIndex > gmIndex) {
+        return {
+          success: false,
+          message:
+            'Validasi Alur Approval: Verifikasi Finance Business Partners Manager (Febrian Dani) wajib diposisikan SEBELUM General Manager.',
+        }
+      }
+      if (gmIndex > directorIndex) {
+        return {
+          success: false,
+          message:
+            'Validasi Alur Approval: General Manager wajib diposisikan SEBELUM Direktur.',
+        }
+      }
+    } else {
+      if (febrianIndex > directorIndex) {
+        return {
+          success: false,
+          message:
+            'Validasi Alur Approval: Verifikasi Finance Business Partners Manager (Febrian Dani) wajib diposisikan SEBELUM Direktur.',
+        }
       }
     }
 
@@ -922,9 +1011,32 @@ export async function approveAssetDisposal(
 
     const isTestingApprover = await isAssetTestingApprover(empContext?.employeeId)
 
+    // Check if step is Director (Hidayat Rahman - ID 10) or Febrian Dani (ID 960)
+    const isDirectorStep =
+      currentStep.approverEmployeeId === 10 ||
+      Boolean(currentStep.approverRole && currentStep.approverRole.toLowerCase().includes('director')) ||
+      Boolean(currentStep.decisionNote && currentStep.decisionNote.toLowerCase().includes('director')) ||
+      Boolean(currentStep.approverName && currentStep.approverName.toLowerCase().includes('hidayat rahman'))
+
+    const isFreshya =
+      empContext?.employeeId === 974 ||
+      Boolean(session.user.email && session.user.email.toLowerCase().includes('freshya'))
+
+    const isFebrianStep =
+      currentStep.approverEmployeeId === 960 ||
+      Boolean(currentStep.approverName && currentStep.approverName.toLowerCase().includes('febrian dani'))
+
+    const isFebrianUser =
+      empContext?.employeeId === 960 ||
+      Boolean(session.user.email && session.user.email.toLowerCase().includes('febrian'))
+
     // Permission check
     const isAuthorized =
-      isSuperAdmin || (empContext?.employeeId && currentStep.approverEmployeeId === empContext.employeeId) || isTestingApprover
+      isSuperAdmin ||
+      (empContext?.employeeId && currentStep.approverEmployeeId === empContext.employeeId) ||
+      (isDirectorStep && isFreshya) ||
+      (isFebrianStep && isFebrianUser) ||
+      isTestingApprover
     if (!isAuthorized) {
       return {
         success: false,
@@ -962,11 +1074,16 @@ export async function approveAssetDisposal(
     }
 
     // 1. Mark current step as Approved
+    const finalDecisionNote =
+      isDirectorStep && isFreshya
+        ? `${decisionNote.trim()} (Disetujui oleh Freshya Ochtovita - Board Secretary a.n. Director)`
+        : decisionNote.trim()
+
     await db
       .update(approvals)
       .set({
         status: 'Approved',
-        decisionNote: decisionNote.trim(),
+        decisionNote: finalDecisionNote,
         signatureUrl: signatureUrl || undefined,
         reviewedAt: now,
       })
@@ -1002,6 +1119,14 @@ export async function approveAssetDisposal(
             .limit(1)
 
           if (nextEmp?.email) {
+            const isNextDirectorStep =
+              nextStep.approverEmployeeId === 10 ||
+              Boolean(nextStep.approverRole && nextStep.approverRole.toLowerCase().includes('director')) ||
+              Boolean(nextStep.decisionNote && nextStep.decisionNote.toLowerCase().includes('director')) ||
+              Boolean(nextStep.approverName && nextStep.approverName.toLowerCase().includes('hidayat rahman'))
+
+            const ccEmails = isNextDirectorStep ? ['freshya.ochtovita@chitraparatama.co.id'] : undefined
+
             await sendAssetDisposalSubmittedEmail({
               approverEmail: nextEmp.email,
               approverName: nextStep.approverName || nextEmp.name,
@@ -1016,6 +1141,7 @@ export async function approveAssetDisposal(
               disposalId: disposal.id,
               stepOrder: nextStep.level || disposal.currentStepOrder + 1,
               totalSteps: disposal.totalSteps,
+              ccEmails,
             }).catch((err) => console.error('[approveAssetDisposal] Next step email notify error:', err))
           }
         } catch (notifyErr) {
@@ -1481,8 +1607,20 @@ export async function rejectAssetDisposal(id: number, rejectionNote: string) {
       .orderBy(approvals.level)
 
     const currentStep = approvalSteps.find((s) => s.level === disposal.currentStepOrder)
+    const isDirectorStep =
+      currentStep?.approverEmployeeId === 10 ||
+      Boolean(currentStep?.approverRole && currentStep.approverRole.toLowerCase().includes('director')) ||
+      Boolean(currentStep?.decisionNote && currentStep.decisionNote.toLowerCase().includes('director')) ||
+      Boolean(currentStep?.approverName && currentStep.approverName.toLowerCase().includes('hidayat rahman'))
+
+    const isFreshya =
+      empContext?.employeeId === 974 ||
+      Boolean(session.user.email && session.user.email.toLowerCase().includes('freshya'))
+
     const isAuthorized =
-      isSuperAdmin || (empContext?.employeeId && currentStep?.approverEmployeeId === empContext.employeeId)
+      isSuperAdmin ||
+      (empContext?.employeeId && currentStep?.approverEmployeeId === empContext.employeeId) ||
+      (isDirectorStep && isFreshya)
     if (!isAuthorized) {
       return { success: false, message: 'Anda tidak memiliki hak otorisasi untuk menolak tahap ini.' }
     }
@@ -1606,11 +1744,20 @@ export async function revertAssetDisposalAction(id: number, revertReason: string
     const isSuperAdmin =
       isSuperAdminRole(empContext?.roleName) || isSuperAdminUser(empContext as any, session?.user)
     const isTestingApprover = await isAssetTestingApprover(empContext?.employeeId)
+    const isDirectorStep =
+      disposal.currentApproverEmployeeId === 10 ||
+      Boolean(disposal.currentApproverName && disposal.currentApproverName.toLowerCase().includes('hidayat rahman')) ||
+      Boolean(disposal.currentApproverName && disposal.currentApproverName.toLowerCase().includes('director'))
+
+    const isFreshya =
+      empContext?.employeeId === 974 ||
+      Boolean(session.user.email && session.user.email.toLowerCase().includes('freshya'))
+
     const isCurrentApprover = Boolean(
       empContext?.employeeId && disposal.currentApproverEmployeeId === empContext.employeeId
     )
 
-    if (!isSuperAdmin && !isCurrentApprover && !isTestingApprover) {
+    if (!isSuperAdmin && !isCurrentApprover && !isTestingApprover && !(isDirectorStep && isFreshya)) {
       return {
         success: false,
         message: 'Anda tidak memiliki hak akses untuk merevert permohonan Asset Disposal ini.',

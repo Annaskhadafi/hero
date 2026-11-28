@@ -486,12 +486,27 @@ export function AssetDisposalFormDialog({
 
   const handleRemoveApprover = (idx: number) => {
     const step = approvers[idx]
-    // Guard: Prevent removing Amama Ira
-    if (
+    const isAmama =
       step.approverEmployeeId === 1341 ||
       step.approverName.toLowerCase().includes('amama ira')
-    ) {
-      toast.error('Verifikasi Finance & Accounting (Amama Ira) tidak boleh dihapus dari alur persetujuan.')
+    const isFebrian =
+      step.approverEmployeeId === 960 ||
+      step.approverName.toLowerCase().includes('febrian dani')
+    const isDirector =
+      step.approverEmployeeId === 10 ||
+      (step.jobTitle && step.jobTitle.toLowerCase().includes('director')) ||
+      (step.title && step.title.toLowerCase().includes('director'))
+
+    if (isAmama) {
+      toast.error('Verifikasi Finance & Accounting Supervisor (Amama Ira) wajib terpasang dan tidak boleh dihapus.')
+      return
+    }
+    if (isFebrian) {
+      toast.error('Verifikasi Finance Business Partners Manager (Febrian Dani) wajib terpasang dan tidak boleh dihapus.')
+      return
+    }
+    if (isDirector) {
+      toast.error('Persetujuan Final Direksi (Hidayat Rahman) wajib terpasang dan tidak boleh dihapus.')
       return
     }
 
@@ -1074,7 +1089,7 @@ export function AssetDisposalFormDialog({
                   4. Rantai Persetujuan &amp; Otorisasi Berjenjang (Approval Routing)
                 </CardTitle>
                 <CardDescription className="text-[11px] text-slate-500">
-                  Dikonfigurasi otomatis hingga Direktur sesuai struktur master data HERO. Terdapat tahapan verifikasi wajib oleh Finance &amp; Accounting (Amama Ira) sebelum ke General Manager &amp; Director.
+                  Dikonfigurasi otomatis hingga Direktur sesuai struktur master data HERO. Tahapan verifikasi oleh Finance SPV (Amama Ira), Finance Manager (Febrian Dani), dan Direktur (Hidayat Rahman, Co-Approve: Freshya Ochtovita) terkunci dan wajib terpasang.
                 </CardDescription>
               </div>
               <Button
@@ -1100,12 +1115,17 @@ export function AssetDisposalFormDialog({
                   const isAmama =
                     s.approverEmployeeId === 1341 ||
                     s.approverName.toLowerCase().includes('amama ira')
+                  const isFebrian =
+                    s.approverEmployeeId === 960 ||
+                    s.approverName.toLowerCase().includes('febrian dani')
                   const isGM =
                     s.approverEmployeeId === 940 ||
                     (s.jobTitle && s.jobTitle.toLowerCase().includes('general manager'))
                   const isDirector =
                     s.approverEmployeeId === 10 ||
-                    (s.jobTitle && s.jobTitle.toLowerCase().includes('director'))
+                    (s.jobTitle && s.jobTitle.toLowerCase().includes('director')) ||
+                    (s.title && s.title.toLowerCase().includes('director'))
+                  const isLocked = isAmama || isFebrian || isDirector
 
                   return (
                     <div
@@ -1115,6 +1135,8 @@ export function AssetDisposalFormDialog({
                           ? 'border-emerald-300 bg-emerald-50/70 shadow-2xs'
                           : isAmama
                           ? 'border-indigo-300 bg-indigo-50/70 shadow-2xs'
+                          : isFebrian
+                          ? 'border-purple-300 bg-purple-50/70 shadow-2xs'
                           : isDirector || isGM
                           ? 'border-blue-200 bg-blue-50/40'
                           : 'border-slate-200 bg-slate-50/50'
@@ -1128,6 +1150,8 @@ export function AssetDisposalFormDialog({
                               ? 'border-emerald-400 bg-emerald-100 text-emerald-900 font-extrabold'
                               : isAmama
                               ? 'border-indigo-400 bg-indigo-100 text-indigo-900 font-extrabold'
+                              : isFebrian
+                              ? 'border-purple-400 bg-purple-100 text-purple-900 font-extrabold'
                               : isDirector || isGM
                               ? 'border-blue-400 bg-blue-100 text-blue-800'
                               : 'border-slate-300 text-slate-700 bg-white'
@@ -1137,7 +1161,7 @@ export function AssetDisposalFormDialog({
                         </Badge>
 
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="font-semibold text-slate-900 truncate">
                               {s.approverName}
                             </span>
@@ -1148,7 +1172,12 @@ export function AssetDisposalFormDialog({
                             )}
                             {isAmama && (
                               <Badge className="bg-indigo-600 text-white text-[9px] px-1.5 py-0 h-4 font-bold">
-                                Special Verification: Finance &amp; Accounting
+                                Finance SPV: Verifikasi Wajib
+                              </Badge>
+                            )}
+                            {isFebrian && (
+                              <Badge className="bg-purple-600 text-white text-[9px] px-1.5 py-0 h-4 font-bold">
+                                Finance Manager: Otorisasi Wajib
                               </Badge>
                             )}
                             {isGM && (
@@ -1158,7 +1187,7 @@ export function AssetDisposalFormDialog({
                             )}
                             {isDirector && (
                               <Badge className="bg-blue-600 text-white text-[9px] px-1.5 py-0 h-4 font-bold">
-                                Direksi Final
+                                Direksi (Co-Approve: Freshya)
                               </Badge>
                             )}
                           </div>
@@ -1195,8 +1224,8 @@ export function AssetDisposalFormDialog({
                           </Button>
                         </div>
 
-                        {/* Searchable Select to change employee */}
-                        {employeeOptions.length > 0 && !isAmama && (
+                        {/* Searchable Select to change employee (Only for unlocked custom steps) */}
+                        {employeeOptions.length > 0 && !isLocked && (
                           <div className="w-52">
                             <HeroSearchableSelect
                               options={employeeOptions}
@@ -1208,8 +1237,8 @@ export function AssetDisposalFormDialog({
                           </div>
                         )}
 
-                        {/* Delete Button (Except Amama Ira) */}
-                        {!isAmama ? (
+                        {/* Delete Button (Except Locked steps: Amama, Febrian, Director) */}
+                        {!isLocked ? (
                           <Button
                             type="button"
                             variant="ghost"
@@ -1220,9 +1249,17 @@ export function AssetDisposalFormDialog({
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
-                        ) : (
+                        ) : isAmama ? (
                           <span className="text-[10px] text-indigo-700 font-bold px-2 py-0.5 rounded bg-indigo-100/70 border border-indigo-200">
-                            Wajib Terpasang
+                            Wajib Terpasang (Finance SPV)
+                          </span>
+                        ) : isFebrian ? (
+                          <span className="text-[10px] text-purple-700 font-bold px-2 py-0.5 rounded bg-purple-100/70 border border-purple-200">
+                            Wajib Terpasang (Finance MGR)
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-blue-700 font-bold px-2 py-0.5 rounded bg-blue-100/70 border border-blue-200">
+                            Wajib Terpasang (Direksi)
                           </span>
                         )}
                       </div>
@@ -1239,7 +1276,7 @@ export function AssetDisposalFormDialog({
             <div className="rounded-lg bg-indigo-50/80 border border-indigo-200 p-2.5 text-[11px] text-indigo-950 flex items-start gap-2">
               <Sparkles className="h-4 w-4 text-indigo-600 shrink-0 mt-0.5" />
               <span>
-                <strong>Aturan Validasi:</strong> Tahapan verifikasi oleh <strong>Finance &amp; Accounting (Amama Ira)</strong> wajib terpasang dan diposisikan sebelum otorisasi General Manager &amp; Director.
+                <strong>Aturan Validasi:</strong> Tahapan verifikasi oleh <strong>Finance SPV (Amama Ira)</strong>, <strong>Finance Manager (Febrian Dani)</strong>, dan <strong>Direktur (Hidayat Rahman / Co-Approve: Freshya Ochtovita)</strong> terkunci (locked) dan wajib disertakan secara berurutan.
               </span>
             </div>
           </CardContent>

@@ -137,8 +137,14 @@ export function AssetDisposalDashboard({
         (currentEmpId && item.applicantEmployeeId === currentEmpId) ||
         (currentUserId && item.createdById === currentUserId)
       )
+      const isDirectorStep =
+        item.currentApproverEmployeeId === 10 ||
+        Boolean(item.currentApproverName && item.currentApproverName.toLowerCase().includes('director')) ||
+        Boolean(item.currentApproverName && item.currentApproverName.toLowerCase().includes('hidayat rahman'))
+      const isBoardSecretary = currentEmpId === 974
+
       const isCurrentApprover = Boolean(
-        currentEmpId && item.currentApproverEmployeeId === currentEmpId
+        currentEmpId && (item.currentApproverEmployeeId === currentEmpId || (isBoardSecretary && isDirectorStep))
       )
       return isCreator || isCurrentApprover
     })
@@ -608,8 +614,14 @@ export function AssetDisposalDashboard({
                   (currentEmpId && row.applicantEmployeeId === currentEmpId) ||
                   (currentUserId && row.createdById === currentUserId)
                 )
+                const isDirectorStep =
+                  row.currentApproverEmployeeId === 10 ||
+                  Boolean(row.currentApproverName && row.currentApproverName.toLowerCase().includes('director')) ||
+                  Boolean(row.currentApproverName && row.currentApproverName.toLowerCase().includes('hidayat rahman'))
+                const isBoardSecretary = currentEmpId === 974
+
                 const isCurrentApprover = Boolean(
-                  currentEmpId && row.currentApproverEmployeeId === currentEmpId
+                  currentEmpId && (row.currentApproverEmployeeId === currentEmpId || (isBoardSecretary && isDirectorStep))
                 )
 
                 const canReview = Boolean(

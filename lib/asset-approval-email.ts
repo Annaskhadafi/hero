@@ -657,10 +657,21 @@ export async function sendAssetDisposalSubmittedEmail(params: {
   disposalId: number
   stepOrder: number
   totalSteps: number
+  ccEmails?: string[]
 }) {
   const baseUrl = getPublicAppUrl()
   const detailLink = `${baseUrl}/dashboard/assets/disposal?id=${params.disposalId}`
   const target = await resolveTargetRecipients(params.approverEmail)
+
+  const ccTargets: string[] = []
+  if (params.ccEmails && params.ccEmails.length > 0) {
+    for (const em of params.ccEmails) {
+      const res = await resolveTargetRecipients(em)
+      if (res.to && !ccTargets.includes(res.to)) {
+        ccTargets.push(res.to)
+      }
+    }
+  }
 
   const html = renderAssetBorrowEmailHtml({
     borrowNumber: params.disposalNumber,
@@ -681,6 +692,7 @@ export async function sendAssetDisposalSubmittedEmail(params: {
 
   await sendWorkflowEmail({
     to: target.to,
+    cc: ccTargets.length > 0 ? ccTargets : undefined,
     templateCode: 'asset_disposal_submitted',
     templateName: 'Permohonan Penghapusan Aset (Asset Disposal)',
     variables: {
@@ -696,7 +708,7 @@ export async function sendAssetDisposalSubmittedEmail(params: {
   })
 
   await notifyWorkflowBellRecipients({
-    recipientEmails: [target.to],
+    recipientEmails: [target.to, ...ccTargets],
     eventType: 'asset.disposal_submitted',
     category: 'approval_requests',
     title: `Approval Disposal: ${params.disposalNumber}`,
